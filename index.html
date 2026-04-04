@@ -329,9 +329,13 @@
       respawnTimer: 0,
       emptyTimer: 0,
       endWall: null,
-      currentLevelId: null
+      currentLevelId: null,
+      size: 40,
+      jumpBuffer: 0,
+      coyote: 0
     };
     const editor = { name: "", tool: "block", objects: [] };
+    editor.scrollX = 0;
 
     function clamp(v, a, b) { return Math.max(a, Math.min(v, b)); }
     function rand(min, max) { return Math.random() * (max - min) + min; }
@@ -1111,11 +1115,12 @@
     function drawRunnerEditor() {
       ctx.fillStyle = "#12295c";
       ctx.fillRect(0, 0, view.w, view.h);
-      for (let x = 0; x < view.w; x += 40) {
+      const gxStart = 10;
+      for (let x = gxStart - (editor.scrollX % 40); x < view.w; x += 40) {
         ctx.strokeStyle = "rgba(255,255,255,0.08)";
         ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, view.h); ctx.stroke();
       }
-      for (let y = 0; y < view.h; y += 40) {
+      for (let y = gxStart; y < view.h; y += 40) {
         ctx.strokeStyle = "rgba(255,255,255,0.08)";
         ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(view.w, y); ctx.stroke();
       }
@@ -1123,18 +1128,21 @@
       ctx.fillRect(0, view.h - 90, view.w, 10);
       for (const o of editor.objects) {
         const y = (o.baseY ?? (view.h - 90 - o.h));
+        const ox = o.x - editor.scrollX;
         if (o.type === "spike") {
           ctx.fillStyle = "#ff5b59";
-          ctx.beginPath(); ctx.moveTo(o.x, y + o.h); ctx.lineTo(o.x + o.w / 2, y); ctx.lineTo(o.x + o.w, y + o.h); ctx.closePath(); ctx.fill();
+          ctx.beginPath(); ctx.moveTo(ox, y + o.h); ctx.lineTo(ox + o.w / 2, y); ctx.lineTo(ox + o.w, y + o.h); ctx.closePath(); ctx.fill();
         } else if (o.type === "block") {
           ctx.fillStyle = "#8d96a5";
-          ctx.fillRect(o.x, y, 40, 40);
+          ctx.fillRect(ox, y, 40, 40);
           ctx.strokeStyle = "#4f5664";
-          ctx.strokeRect(o.x, y, 40, 40);
+          ctx.strokeRect(ox, y, 40, 40);
         } else {
-          ctx.fillStyle = "#ffd93b"; ctx.beginPath(); ctx.arc(o.x + 20, y + 20, 14, 0, Math.PI * 2); ctx.fill();
+          ctx.fillStyle = "#ffd93b"; ctx.beginPath(); ctx.arc(ox + 20, y + 20, 14, 0, Math.PI * 2); ctx.fill();
         }
       }
+      ctx.fillStyle = "#dce4ff";
+      ctx.fillText(`Scroll X: ${Math.floor(editor.scrollX)}`, 14, 20);
     }
 
     function startRunnerEndless(levelData = null, fromEditor = false, levelId = null) {
@@ -1157,6 +1165,8 @@
       runner.respawnTimer = 0;
       runner.emptyTimer = 0;
       runner.endWall = null;
+      runner.jumpBuffer = 0;
+      runner.coyote = 0;
       mainMenu.style.display = "none";
       difficultyModal.style.display = "none";
       document.getElementById("backToEditorBtn").style.display = fromEditor ? "block" : "none";
@@ -1167,11 +1177,12 @@
       if (runner.respawnTimer > 0) {
         runner.respawnTimer -= dt;
         if (runner.respawnTimer <= 0) {
-          runner.y = view.h - 90 - 24;
+          runner.y = view.h - 90 - runner.size;
           runner.vy = 0;
         }
         return;
       }
+      runner.jumpBuffer = Math.max(0, runner.jumpBuffer - dt);
       runner.invuln = Math.max(0, runner.invuln - dt);
       runner.scoreTick += dt;
       if (runner.scoreTick >= 1) {
@@ -1180,38 +1191,48 @@
       }
       runner.vy += 0.62;
       runner.y += runner.vy;
-      let floor = view.h - 90 - 24;
+      let floor = view.h - 90 - runner.size;
       for (const o of runner.obstacles) {
         if (o.type !== "block") continue;
         const oy = (o.baseY ?? (view.h - 90 - o.h));
-        const px = 120, pw = 24;
-        if (px + pw > o.x && px < o.x + o.w && runner.y + 24 <= oy + 18 && runner.y + 24 >= oy - 16) {
-          floor = Math.min(floor, oy - 24);
+        const px = 120, pw = runner.size;
+        if (px + pw > o.x && px < o.x + o.w && runner.y + runner.size <= oy + 22 && runner.y + runner.size >= oy - 18) {
+          floor = Math.min(floor, oy - runner.size);
         }
       }
+      let justLanded = false;
       if (runner.y >= floor) {
+        if (!runner.onGround) justLanded = true;
         runner.y = floor;
         runner.vy = 0;
         runner.onGround = true;
-      } else runner.onGround = false;
+        runner.coyote = 0.08;
+      } else {
+        runner.onGround = false;
+        runner.coyote = Math.max(0, runner.coyote - dt);
+      }
+      if (runner.jumpBuffer > 0 && (runner.onGround || runner.coyote > 0 || justLanded)) {
+        runner.vy = -11.5;
+        runner.onGround = false;
+        runner.jumpBuffer = 0;
+        runner.coyote = 0;
+      }
 
       if (state.mode === "runner_endless") {
         runner.spawnTimer -= dt;
         if (runner.spawnTimer <= 0) {
           const x = view.w + 40;
-          const len = 2 + Math.floor(Math.random() * 3);
-          const cols = [];
-          for (let i = 0; i < len; i++) {
-            const bx = x + i * 40;
-            cols.push(bx);
-            runner.obstacles.push({ x: bx, type: "block", w: 40, h: 40, baseY: view.h - 130 });
+          const patterns = [
+            [{t:"block",dx:0,dy:0},{t:"block",dx:40,dy:0},{t:"spike",dx:40,dy:-40},{t:"orb",dx:40,dy:-120}],
+            [{t:"block",dx:0,dy:0},{t:"block",dx:40,dy:0},{t:"block",dx:80,dy:0},{t:"spike",dx:80,dy:-40}],
+            [{t:"block",dx:0,dy:0},{t:"spike",dx:0,dy:-40},{t:"block",dx:80,dy:0},{t:"orb",dx:80,dy:-130}],
+            [{t:"block",dx:0,dy:0},{t:"block",dx:40,dy:0},{t:"block",dx:80,dy:0},{t:"orb",dx:40,dy:-140}]
+          ];
+          const p = patterns[Math.floor(Math.random()*patterns.length)];
+          for (const it of p) {
+            runner.obstacles.push({ x: x + it.dx, type: it.t === "orb" ? "orb" : it.t === "spike" ? "spike" : "block", w: 40, h: 40, baseY: view.h - 130 + it.dy });
           }
-          const spikeCol = cols[Math.floor(Math.random() * cols.length)];
-          runner.obstacles.push({ x: spikeCol, type: "spike", w: 40, h: 40, baseY: view.h - 130 - 40 });
-          if (Math.random() < 0.8) {
-            runner.obstacles.push({ x: spikeCol, type: "orb", w: 40, h: 40, baseY: view.h - 250 - Math.random() * 90 });
-          }
-          runner.spawnTimer = 0.9 + Math.random() * 0.7;
+          runner.spawnTimer = 1.0 + Math.random() * 0.8;
         }
       }
 
@@ -1222,7 +1243,7 @@
           o.canBoost = true;
         }
         if ((o.type === "spike" || o.type === "block") && !o.dead) {
-          const px = 120, py = runner.y, pw = 24, ph = 24;
+          const px = 120, py = runner.y, pw = runner.size, ph = runner.size;
           const oy = (o.baseY ?? (view.h - 90 - o.h));
           if (px < o.x + o.w && px + pw > o.x && py < oy + o.h && py + ph > oy) {
             if (runner.invuln <= 0) {
@@ -1231,6 +1252,11 @@
               if (state.mode === "runner_level_play") {
                 runner.respawnTimer = 1;
                 runner.y = -100;
+                if (runner.levelData) {
+                  runner.obstacles = runner.levelData.map((o) => ({ ...o, x: o.x + view.w }));
+                  runner.endWall = null;
+                  runner.emptyTimer = 0;
+                }
               }
             }
           }
@@ -1246,7 +1272,7 @@
       if (state.mode === "runner_level_play") {
         if (runner.obstacles.length === 0 && !runner.endWall) runner.emptyTimer += dt;
         else runner.emptyTimer = 0;
-        if (runner.emptyTimer >= 2 && !runner.endWall) runner.endWall = { x: view.w + 60, w: 40, h: 220 };
+        if (runner.emptyTimer >= 2 && !runner.endWall) runner.endWall = { x: view.w + 60, w: 40, h: 320 };
         if (runner.endWall) {
           runner.endWall.x -= 5.5;
           const px = 120, py = runner.y, pw = 24, ph = 24;
@@ -1274,7 +1300,7 @@
       ctx.fillStyle = "#2e376f";
       ctx.fillRect(0, view.h - 90, view.w, 10);
       ctx.fillStyle = "#7de2ff";
-      ctx.fillRect(120, runner.y, 24, 24);
+      ctx.fillRect(120, runner.y, runner.size, runner.size);
       for (const o of runner.obstacles) {
         const y = (o.baseY ?? (view.h - 90 - o.h));
         if (o.type === "spike") {
@@ -1314,7 +1340,7 @@
 
       if (e.code === "Space") {
         if (state.mode === "runner_endless" || state.mode === "runner_level_play") {
-          if (runner.onGround) runner.vy = -11;
+          runner.jumpBuffer = 0.12;
         } else if (player.dash.onGround) {
           player.dash.vy = -10.4;
         }
@@ -1460,6 +1486,7 @@
       editor.name = name;
       editor.objects = [];
       editor.tool = "block";
+      editor.scrollX = 0;
       state.mode = "runner_editor";
       mainMenu.style.display = "none";
       editorTools.style.display = "block";
@@ -1546,6 +1573,7 @@
       if (editBtn) editBtn.onclick = () => {
         editor.name = lv.name;
         editor.objects = (lv.data || []).map((o) => ({...o}));
+        editor.scrollX = 0;
         state.mode = "runner_editor";
         levelBrowser.style.display = "none";
         editorTools.style.display = "block";
@@ -1589,10 +1617,10 @@
     canvas.addEventListener("click", (e) => {
       if (state.mode !== "runner_editor") return;
       const rect = canvas.getBoundingClientRect();
-      const x = ((e.clientX - rect.left) / rect.width) * view.w;
+      const x = ((e.clientX - rect.left) / rect.width) * view.w + editor.scrollX;
       const y = ((e.clientY - rect.top) / rect.height) * view.h;
-      const sx = Math.floor(x / 40) * 40;
-      const sy = Math.floor(y / 40) * 40;
+      const sx = Math.floor((x - 10) / 40) * 40 + 10;
+      const sy = Math.floor((y - 10) / 40) * 40 + 10;
       if (editor.tool === "erase") {
         editor.objects = editor.objects.filter((o) => !(Math.abs(o.x - sx) < 2 && Math.abs((o.baseY ?? 0) - sy) < 2));
         return;
@@ -1601,6 +1629,11 @@
       if (occupied) return;
       editor.objects.push({ x: sx, baseY: sy, type: editor.tool, w: 40, h: 40 });
     });
+    canvas.addEventListener("wheel", (e) => {
+      if (state.mode !== "runner_editor") return;
+      e.preventDefault();
+      editor.scrollX = Math.max(0, editor.scrollX + e.deltaY * 0.6);
+    }, { passive: false });
 
     state.msg = "Спочатку обери складність.";
     updateHud();
