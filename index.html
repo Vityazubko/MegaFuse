@@ -74,9 +74,51 @@
       background: #1c2250;
       color: var(--text);
     }
+    .difficulty-modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(5, 8, 20, 0.85);
+      display: grid;
+      place-items: center;
+      z-index: 10;
+    }
+    .difficulty-box {
+      background: #171c41;
+      border: 1px solid #3b4692;
+      border-radius: 14px;
+      padding: 16px;
+      width: min(680px, 92vw);
+    }
+    .difficulty-grid {
+      display: grid;
+      gap: 10px;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      margin-top: 12px;
+    }
+    .difficulty-btn {
+      padding: 10px;
+      border-radius: 10px;
+      border: 1px solid #5966c5;
+      background: #242d6a;
+      color: #eef2ff;
+      cursor: pointer;
+      text-align: left;
+      font-size: 13px;
+      line-height: 1.35;
+    }
   </style>
 </head>
 <body>
+  <div class="difficulty-modal" id="difficultyModal">
+    <div class="difficulty-box">
+      <b>Обери складність перед початком</b>
+      <div class="difficulty-grid">
+        <button class="difficulty-btn" data-difficulty="easy"><b>Легка</b><br/>75×75, без спайків, 5 завдань</button>
+        <button class="difficulty-btn" data-difficulty="normal"><b>Нормальна</b><br/>100×100, спайки 15-45с, 10 завдань</button>
+        <button class="difficulty-btn" data-difficulty="hard"><b>Складна</b><br/>150×150, спайки 10-15с, 15 завдань</button>
+      </div>
+    </div>
+  </div>
   <div class="game-wrap">
     <div class="hud">
       <div class="stats">
@@ -99,6 +141,7 @@
   <script>
     const canvas = document.getElementById("game");
     const ctx = canvas.getContext("2d");
+    const difficultyModal = document.getElementById("difficultyModal");
     const ui = {
       hp: document.getElementById("hp"),
       score: document.getElementById("score"),
@@ -110,13 +153,24 @@
     };
 
     const view = { w: canvas.width, h: canvas.height };
-    const world = {
-      tile: 64,
-      tilesX: 100,
-      tilesY: 100,
-      arenaW: 6400,
-      arenaH: 6400,
-      dashLaneWidth: 320
+    const world = { tile: 64, tilesX: 100, tilesY: 100, arenaW: 6400, arenaH: 6400, dashLaneWidth: 320 };
+
+    const DIFFICULTIES = {
+      easy: {
+        hp: 250, tiles: 75, showChars: "all", enemyDamage: 6, zombieDamage: 8,
+        spikeMin: 999999, spikeMax: 999999, spikesEnabled: false,
+        crewCount: 6, impostors: 1, initialZombies: 0, zombieSpawnEvery: 30, tasks: 5
+      },
+      normal: {
+        hp: 200, tiles: 100, showChars: "knownRoles", enemyDamage: 8, zombieDamage: 10,
+        spikeMin: 15, spikeMax: 45, spikesEnabled: true,
+        crewCount: 8, impostors: 2, initialZombies: 10, zombieSpawnEvery: 20, tasks: 10
+      },
+      hard: {
+        hp: 250, tiles: 150, showChars: "none", enemyDamage: 12, zombieDamage: 15,
+        spikeMin: 10, spikeMax: 15, spikesEnabled: true,
+        crewCount: 10, impostors: 4, initialZombies: 15, zombieSpawnEvery: 15, tasks: 15
+      }
     };
 
     const camera = { x: 0, y: 0 };
@@ -140,6 +194,15 @@
       totalTasks: 10,
       totalImpostors: 2,
       totalCrew: 8,
+      enemyDamage: 8,
+      zombieDamage: 10,
+      zombieSpawnEvery: 20,
+      zombieSpawnTimer: 20,
+      mapShowChars: "knownRoles",
+      spikesEnabled: true,
+      spikeMin: 15,
+      spikeMax: 45,
+      difficultyKey: null,
       over: false,
       win: false,
       showMap: false,
@@ -169,7 +232,8 @@
 
     function createBlocks() {
       const blocks = [];
-      for (let i = 0; i < 280; i++) {
+      const count = Math.floor((world.tilesX * world.tilesY) / 35);
+      for (let i = 0; i < count; i++) {
         const w = world.tile * (1 + Math.floor(Math.random() * 3));
         const h = world.tile * (1 + Math.floor(Math.random() * 2));
         blocks.push({
@@ -182,6 +246,36 @@
     }
 
     let blocks = createBlocks();
+
+    function randomFreePosition(radius = 18) {
+      for (let i = 0; i < 900; i++) {
+        const x = rand(radius + 2, world.arenaW - radius - 2);
+        const y = rand(radius + 2, world.arenaH - radius - 2);
+        if (!blocks.some((b) => circleRectCollision(x, y, radius, b))) return { x, y };
+      }
+      return { x: world.arenaW / 2, y: world.arenaH / 2 };
+    }
+
+    function applyDifficulty(key) {
+      const d = DIFFICULTIES[key] || DIFFICULTIES.normal;
+      state.difficultyKey = key;
+      world.tilesX = d.tiles;
+      world.tilesY = d.tiles;
+      world.arenaW = world.tilesX * world.tile;
+      world.arenaH = world.tilesY * world.tile;
+      state.hp = d.hp;
+      state.totalTasks = d.tasks;
+      state.totalCrew = d.crewCount;
+      state.totalImpostors = d.impostors;
+      state.enemyDamage = d.enemyDamage;
+      state.zombieDamage = d.zombieDamage;
+      state.zombieSpawnEvery = d.zombieSpawnEvery;
+      state.zombieSpawnTimer = d.zombieSpawnEvery;
+      state.mapShowChars = d.showChars;
+      state.spikesEnabled = d.spikesEnabled;
+      state.spikeMin = d.spikeMin;
+      state.spikeMax = d.spikeMax;
+    }
 
     function texturedRect(x, y, w, h, base, line, step = 8) {
       ctx.fillStyle = base;
@@ -225,9 +319,10 @@
       state.enemyBullets = [];
       state.enemies = [];
       for (let i = 0; i < 14; i++) {
+        const p = randomFreePosition(16);
         state.enemies.push({
-          x: rand(300, world.arenaW - 300),
-          y: rand(300, world.arenaH - 300),
+          x: p.x,
+          y: p.y,
           r: 16,
           hp: 45,
           cd: 0,
@@ -236,14 +331,16 @@
         });
       }
 
+      const initialZombies = DIFFICULTIES[state.difficultyKey || "normal"].initialZombies;
       state.zombies = [];
-      for (let i = 0; i < 10; i++) {
+      for (let i = 0; i < initialZombies; i++) {
         spawnZombie(true);
       }
 
       state.tasks = [];
       for (let i = 0; i < state.totalTasks; i++) {
-        state.tasks.push({ x: rand(200, world.arenaW - 200), y: rand(200, world.arenaH - 200), done: false });
+        const p = randomFreePosition(14);
+        state.tasks.push({ id: i, x: p.x, y: p.y, done: false });
       }
 
       const impostorIndices = new Set();
@@ -251,9 +348,10 @@
       state.crew = [];
       for (let i = 0; i < state.totalCrew; i++) {
         const impostor = impostorIndices.has(i);
+        const p = randomFreePosition(12);
         state.crew.push({
-          x: rand(200, world.arenaW - 200),
-          y: rand(200, world.arenaH - 200),
+          x: p.x,
+          y: p.y,
           vx: rand(-1, 1),
           vy: rand(-1, 1),
           speed: 1.4,
@@ -261,25 +359,28 @@
           impostor,
           chasing: false,
           helperCooldown: 0,
+          targetTaskId: null,
+          workTimer: 0,
           stateColor: "#c8cedf"
         });
       }
 
       state.dashSpikes = [];
-      state.nextSpikeTimer = rand(15, 45);
+      state.nextSpikeTimer = state.spikesEnabled ? rand(state.spikeMin, state.spikeMax) : 999999;
       state.spikeWarningTimer = 0;
       state.pendingSpike = false;
 
       state.score = 0;
-      state.hp = 200;
+      state.hp = DIFFICULTIES[state.difficultyKey || "normal"].hp;
       state.taskDone = 0;
       state.impostorsFound = 0;
       state.over = false;
       state.win = false;
       state.frame = 0;
       state.msg = "Виконуй завдання, виживай і викривай імпосторів.";
-      player.x = 320;
-      player.y = 320;
+      const p = randomFreePosition(player.r);
+      player.x = p.x;
+      player.y = p.y;
       player.fireCooldown = 0;
       player.dirX = 1;
       player.dirY = 0;
@@ -299,13 +400,10 @@
     }
 
     function spawnZombie(initial = false) {
-      const edge = Math.floor(Math.random() * 4);
       let x = 0, y = 0;
-      if (edge === 0) { x = rand(0, world.arenaW); y = -50; }
-      if (edge === 1) { x = world.arenaW + 50; y = rand(0, world.arenaH); }
-      if (edge === 2) { x = rand(0, world.arenaW); y = world.arenaH + 50; }
-      if (edge === 3) { x = -50; y = rand(0, world.arenaH); }
-      if (initial) { x = rand(100, world.arenaW - 100); y = rand(100, world.arenaH - 100); }
+      const p = randomFreePosition(15);
+      x = p.x;
+      y = p.y;
       state.zombies.push({ x, y, r: 15, hp: 50, speed: 1.5 + Math.random() * 1.2, hitCd: 0 });
     }
 
@@ -350,7 +448,7 @@
       }
     }
 
-    function updateArenaEntities() {
+    function updateArenaEntities(dt) {
       for (const e of state.enemies) {
         if (e.hp <= 0) continue;
         const dx = player.x - e.x;
@@ -368,7 +466,11 @@
         }
       }
 
-      if (state.frame % 170 === 0 && state.zombies.length < 24) spawnZombie();
+      state.zombieSpawnTimer -= dt;
+      if (state.zombieSpawnTimer <= 0) {
+        spawnZombie();
+        state.zombieSpawnTimer = state.zombieSpawnEvery;
+      }
 
       for (const z of state.zombies) {
         if (z.hp <= 0) continue;
@@ -380,15 +482,32 @@
         if (canMoveArena(nx, ny, z.r)) { z.x = nx; z.y = ny; }
         if (z.hitCd > 0) z.hitCd -= 1;
         if (d < z.r + player.r + 6 && z.hitCd <= 0) {
-          state.hp -= 10;
+          state.hp -= state.zombieDamage;
           z.hitCd = 35;
           state.msg = "Зомбі вкусив тебе!";
         }
       }
 
       for (const c of state.crew) {
-        const targetX = c.chasing ? player.x : c.x + c.vx * 50;
-        const targetY = c.chasing ? player.y : c.y + c.vy * 50;
+        if (c.scanned && !c.impostor) {
+          if (c.targetTaskId === null || state.tasks.find((t) => t.id === c.targetTaskId)?.done) {
+            const unfinished = state.tasks.filter((t) => !t.done);
+            if (unfinished.length > 0) {
+              let best = unfinished[0];
+              let bestD = dist(c.x, c.y, best.x, best.y);
+              for (const t of unfinished) {
+                const td = dist(c.x, c.y, t.x, t.y);
+                if (td < bestD) { best = t; bestD = td; }
+              }
+              c.targetTaskId = best.id;
+              c.workTimer = 0;
+            }
+          }
+        }
+
+        const targetTask = c.targetTaskId !== null ? state.tasks.find((t) => t.id === c.targetTaskId && !t.done) : null;
+        const targetX = c.chasing ? player.x : targetTask ? targetTask.x : c.x + c.vx * 50;
+        const targetY = c.chasing ? player.y : targetTask ? targetTask.y : c.y + c.vy * 50;
         const dx = targetX - c.x;
         const dy = targetY - c.y;
         const d = Math.hypot(dx, dy) || 1;
@@ -409,10 +528,18 @@
           c.vy = rand(-1, 1);
         }
 
-        if (c.helperCooldown > 0) c.helperCooldown--;
-        if (c.scanned && !c.impostor && c.helperCooldown <= 0) {
-          completeRandomTaskNearCrew(c);
-          c.helperCooldown = 280;
+        if (c.scanned && !c.impostor && targetTask) {
+          const nearTask = dist(c.x, c.y, targetTask.x, targetTask.y) < 24;
+          if (nearTask) c.workTimer += dt;
+          else c.workTimer = 0;
+          if (c.workTimer >= 20) {
+            targetTask.done = true;
+            state.taskDone++;
+            state.score += 30;
+            state.msg = "Добрий амонгас виконав завдання за 20 секунд.";
+            c.targetTaskId = null;
+            c.workTimer = 0;
+          }
         }
 
         if (c.chasing && dist(c.x, c.y, player.x, player.y) < 24) {
@@ -458,7 +585,7 @@
 
       for (const b of state.enemyBullets) {
         if (dist(b.x, b.y, player.x, player.y) < player.r + 4) {
-          state.hp -= 8;
+          state.hp -= state.enemyDamage;
           b.life = 0;
         }
       }
@@ -503,6 +630,7 @@
         player.dash.onGround = false;
       }
 
+      if (!state.spikesEnabled) return;
       state.nextSpikeTimer -= dt;
       if (!state.pendingSpike && state.nextSpikeTimer <= 1.5) {
         state.pendingSpike = true;
@@ -519,7 +647,7 @@
             hit: false
           });
           state.pendingSpike = false;
-          state.nextSpikeTimer = rand(15, 45);
+          state.nextSpikeTimer = rand(state.spikeMin, state.spikeMax);
         }
       }
 
@@ -550,6 +678,7 @@
     }
 
     function update(dt) {
+      if (!state.difficultyKey) return;
       if (state.over) return;
       state.frame++;
 
@@ -602,7 +731,7 @@
       }
 
       updateProjectiles();
-      updateArenaEntities();
+      updateArenaEntities(dt);
       updateDash(dt);
 
       updateCamera();
@@ -760,21 +889,35 @@
       const sx = w / world.arenaW;
       const sy = h / world.arenaH;
 
+      for (const b of blocks) {
+        ctx.fillStyle = "rgba(88,170,84,0.85)";
+        ctx.fillRect(x + b.x * sx, y + b.y * sy, Math.max(1, b.w * sx), Math.max(1, b.h * sy));
+      }
+
       for (const t of state.tasks) {
         if (t.done) continue;
         ctx.fillStyle = "#f3c654";
         ctx.fillRect(x + t.x * sx - 2, y + t.y * sy - 2, 4, 4);
       }
-      for (const c of state.crew) {
-        ctx.fillStyle = c.impostor ? "#ff4f61" : "#50a9ff";
-        ctx.fillRect(x + c.x * sx - 2, y + c.y * sy - 2, 4, 4);
+      if (state.mapShowChars !== "none") {
+        for (const c of state.crew) {
+          let color = "#8ea3ff";
+          if (state.mapShowChars === "all") color = c.impostor ? "#ff4f61" : "#50a9ff";
+          if (state.mapShowChars === "knownRoles") color = c.scanned ? (c.impostor ? "#ff4f61" : "#50a9ff") : "#8ea3ff";
+          ctx.fillStyle = color;
+          ctx.fillRect(x + c.x * sx - 2, y + c.y * sy - 2, 4, 4);
+        }
+        for (const e of state.enemies) {
+          ctx.fillStyle = "#ff9ab0";
+          ctx.fillRect(x + e.x * sx - 1, y + e.y * sy - 1, 3, 3);
+        }
+        for (const z of state.zombies) {
+          ctx.fillStyle = "#7ac65b";
+          ctx.fillRect(x + z.x * sx - 1, y + z.y * sy - 1, 3, 3);
+        }
+        ctx.fillStyle = "#2ee6a8";
+        ctx.fillRect(x + player.x * sx - 3, y + player.y * sy - 3, 6, 6);
       }
-      for (const z of state.zombies) {
-        ctx.fillStyle = "#7ac65b";
-        ctx.fillRect(x + z.x * sx - 1, y + z.y * sy - 1, 3, 3);
-      }
-      ctx.fillStyle = "#2ee6a8";
-      ctx.fillRect(x + player.x * sx - 3, y + player.y * sy - 3, 6, 6);
 
       const camW = (view.w - world.dashLaneWidth) * sx;
       const camH = view.h * sy;
@@ -826,7 +969,16 @@
       state.keys[e.code] = false;
     });
 
-    resetGame();
+    document.querySelectorAll(".difficulty-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        applyDifficulty(btn.dataset.difficulty);
+        difficultyModal.style.display = "none";
+        resetGame();
+      });
+    });
+
+    state.msg = "Спочатку обери складність.";
+    updateHud();
     requestAnimationFrame(loop);
   </script>
 </body>
