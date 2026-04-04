@@ -181,6 +181,7 @@
     <button class="difficulty-btn" id="playLevelBtn">Play</button>
     <button class="difficulty-btn" id="exitEditorBtn">Exit</button>
   </div>
+  <button id="backToEditorBtn" class="difficulty-btn" style="display:none; position:fixed; top:10px; right:10px; z-index:12;">Повернутись до редактора</button>
   <div class="game-wrap">
     <div class="hud">
       <div class="stats">
@@ -317,7 +318,8 @@
       onGround: true,
       obstacles: [],
       spawnTimer: 1.2,
-      levelData: null
+      levelData: null,
+      fromEditor: false
     };
     const editor = { name: "", tool: "block", objects: [] };
 
@@ -1070,7 +1072,7 @@
 
       ctx.fillStyle = "#d7defa";
       ctx.font = "14px Inter, Arial";
-      ctx.fillText(`Карта ${world.tilesX}×${world.tilesY} (M щоб закрити)`, x + 12, y + 20);
+      ctx.fillText(`Карта ${world.tilesX}×${world.tilesY} (V щоб закрити)`, x + 12, y + 20);
     }
 
     function draw() {
@@ -1105,14 +1107,14 @@
           ctx.fillStyle = "#ff5b59";
           ctx.beginPath(); ctx.moveTo(o.x, view.h - 90); ctx.lineTo(o.x + o.w / 2, y); ctx.lineTo(o.x + o.w, view.h - 90); ctx.closePath(); ctx.fill();
         } else if (o.type === "block") {
-          texturedRect(o.x, y, o.w, o.h, "#d06a3f", "#6a2d12", 6);
+          texturedRect(o.x, y, 32, 32, "#8d96a5", "#4f5664", 6);
         } else {
           ctx.fillStyle = "#ffd93b"; ctx.beginPath(); ctx.arc(o.x + 12, y + 12, 10, 0, Math.PI * 2); ctx.fill();
         }
       }
     }
 
-    function startRunnerEndless(levelData = null) {
+    function startRunnerEndless(levelData = null, fromEditor = false) {
       state.mode = levelData ? "runner_level_play" : "runner_endless";
       runner.hp = 100;
       runner.score = 0;
@@ -1122,6 +1124,7 @@
       runner.vy = 0;
       runner.onGround = true;
       runner.levelData = levelData;
+      runner.fromEditor = fromEditor;
       runner.obstacles = [];
       if (levelData) {
         for (const o of levelData) runner.obstacles.push({ ...o, x: o.x + view.w });
@@ -1129,6 +1132,7 @@
       runner.spawnTimer = 1.2;
       mainMenu.style.display = "none";
       difficultyModal.style.display = "none";
+      document.getElementById("backToEditorBtn").style.display = fromEditor ? "block" : "none";
       state.msg = "Runner mode!";
     }
 
@@ -1141,7 +1145,15 @@
       }
       runner.vy += 0.62;
       runner.y += runner.vy;
-      const floor = view.h - 90;
+      let floor = view.h - 90 - 24;
+      for (const o of runner.obstacles) {
+        if (o.type !== "block") continue;
+        const oy = (o.baseY ?? (view.h - 90 - o.h));
+        const px = 120, pw = 24;
+        if (px + pw > o.x && px < o.x + o.w && runner.y + 24 <= oy + 18 && runner.y + 24 >= oy - 16) {
+          floor = Math.min(floor, oy - 24);
+        }
+      }
       if (runner.y >= floor) {
         runner.y = floor;
         runner.vy = 0;
@@ -1151,14 +1163,16 @@
       if (state.mode === "runner_endless") {
         runner.spawnTimer -= dt;
         if (runner.spawnTimer <= 0) {
-          const t = ["spike", "block", "orb"][Math.floor(Math.random() * 3)];
-          const obj = { x: view.w + 30, type: t, w: 30, h: t === "block" ? 40 : 30 };
-          if (t === "spike" && Math.random() < 0.35) {
-            const block = runner.obstacles.find((o) => o.type === "block" && Math.abs(o.x - (view.w + 30)) < 80);
-            if (block) obj.baseY = (view.h - 90 - block.h);
+          const x = view.w + 30;
+          const block = { x, type: "block", w: 32, h: 32 };
+          runner.obstacles.push(block);
+          if (Math.random() < 0.55) {
+            runner.obstacles.push({ x, type: "spike", w: 30, h: 30, baseY: view.h - 90 - block.h });
           }
-          runner.obstacles.push(obj);
-          runner.spawnTimer = 0.8 + Math.random() * 1.2;
+          if (Math.random() < 0.7) {
+            runner.obstacles.push({ x: x + 10, type: "orb", w: 24, h: 24, baseY: view.h - 180 - Math.random() * 80 });
+          }
+          runner.spawnTimer = 0.45 + Math.random() * 0.6;
         }
       }
 
@@ -1209,7 +1223,7 @@
           ctx.fillStyle = "#ff5b59";
           ctx.beginPath(); ctx.moveTo(o.x, base); ctx.lineTo(o.x + o.w / 2, y); ctx.lineTo(o.x + o.w, base); ctx.closePath(); ctx.fill();
         } else if (o.type === "block") {
-          texturedRect(o.x, y, o.w, o.h, "#d06a3f", "#6a2d12", 6);
+          texturedRect(o.x, y, 32, 32, "#8d96a5", "#4f5664", 6);
         } else {
           ctx.fillStyle = "#ffd93b"; ctx.beginPath(); ctx.arc(o.x + 12, y + 12, 10, 0, Math.PI * 2); ctx.fill();
           ctx.strokeStyle = "#8f6d00"; ctx.stroke();
@@ -1382,6 +1396,7 @@
       state.mode = "runner_editor";
       mainMenu.style.display = "none";
       editorTools.style.display = "block";
+      document.getElementById("backToEditorBtn").style.display = "none";
     });
 
     function openLevelBrowser(type) {
@@ -1425,7 +1440,7 @@
       <button class="difficulty-btn" id="dislikeLvBtn">Dislike</button>
       <button class="difficulty-btn" id="commentLvBtn">Comment</button>
       <button class="difficulty-btn" id="reactCommentBtn">React Comment</button>
-      ${type === "mine" ? '<button class="difficulty-btn" id="publishLvBtn">Publish</button>' : ''}`;
+      ${type === "mine" ? '<button class="difficulty-btn" id="publishLvBtn">Publish</button><button class="difficulty-btn" id="editLvBtn">Edit</button>' : ''}`;
       levelDetail.appendChild(actions);
       document.getElementById("playLvBtn").onclick = () => { levelBrowser.style.display = "none"; startRunnerEndless(lv.data); };
       document.getElementById("likeLvBtn").onclick = () => {
@@ -1459,6 +1474,15 @@
       };
       const pubBtn = document.getElementById("publishLvBtn");
       if (pubBtn) pubBtn.onclick = () => { lv.published = true; saveData(d); showLevelDetail(levelId, type); };
+      const editBtn = document.getElementById("editLvBtn");
+      if (editBtn) editBtn.onclick = () => {
+        editor.name = lv.name;
+        editor.objects = (lv.data || []).map((o) => ({...o}));
+        state.mode = "runner_editor";
+        levelBrowser.style.display = "none";
+        editorTools.style.display = "block";
+        document.getElementById("backToEditorBtn").style.display = "none";
+      };
     }
 
     document.getElementById("btnMyLevels").addEventListener("click", () => {
@@ -1478,6 +1502,7 @@
     document.getElementById("exitEditorBtn").onclick = () => {
       state.mode = "menu";
       editorTools.style.display = "none";
+      document.getElementById("backToEditorBtn").style.display = "none";
       mainMenu.style.display = "grid";
     };
     document.getElementById("saveLevelBtn").onclick = () => {
@@ -1486,7 +1511,12 @@
       d.levels.push({ id: Date.now(), name: editor.name || "My Level", author: d.currentUser, data: editor.objects, published: false, views: 0, likes: 0, dislikes: 0, comments: [], likedBy: [], dislikedBy: [], viewedBy: [] });
       saveData(d); alert("Збережено");
     };
-    document.getElementById("playLevelBtn").onclick = () => startRunnerEndless(editor.objects);
+    document.getElementById("playLevelBtn").onclick = () => startRunnerEndless(editor.objects, true);
+    document.getElementById("backToEditorBtn").onclick = () => {
+      state.mode = "runner_editor";
+      document.getElementById("backToEditorBtn").style.display = "none";
+      editorTools.style.display = "block";
+    };
 
     canvas.addEventListener("click", (e) => {
       if (state.mode !== "runner_editor") return;
@@ -1497,7 +1527,7 @@
         editor.objects = editor.objects.filter((o) => Math.abs(o.x - sx) > 16);
         return;
       }
-      editor.objects.push({ x: sx, type: editor.tool, w: 30, h: editor.tool === "block" ? 40 : 30 });
+      editor.objects.push({ x: sx, type: editor.tool, w: editor.tool === "block" ? 32 : 30, h: editor.tool === "block" ? 32 : 30 });
     });
 
     state.msg = "Спочатку обери складність.";
