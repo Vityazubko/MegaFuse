@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>MegaFuse: BrawlCraft Dash Impostor</title>
+  <title>MegaFuse: Ultimate Mix</title>
   <style>
     :root {
       --bg: #0f1226;
@@ -25,7 +25,7 @@
       padding: 12px;
     }
     .game-wrap {
-      width: min(1000px, 100%);
+      width: min(1100px, 100%);
       display: grid;
       gap: 12px;
     }
@@ -84,14 +84,14 @@
         <span>⭐ Очки: <b id="score"></b></span>
         <span>🔧 Завдання: <b id="tasks"></b></span>
         <span>👾 Імпосторів знайдено: <b id="found"></b></span>
+        <span>🧟 Зомбі: <b id="zombies"></b></span>
       </div>
       <div id="message"></div>
     </div>
     <canvas id="game" width="960" height="540"></canvas>
     <div class="controls">
-      Змішана гра (Brawl Stars + Minecraft + Geometry Dash + Among Us).<br />
-      Рух: <kbd>WASD</kbd> або <kbd>←↑→↓</kbd> • Постріл: <kbd>Space</kbd> • Взаємодія із завданням/сканом: <kbd>E</kbd> • Рестарт: <kbd>R</kbd>.<br />
-      Ліворуч — аренка з блоками й ворогами (Brawl + Minecraft). Праворуч — авторанер-платформа (Geometry Dash). Роби завдання та знаходь імпосторів (Among Us).
+      <b>Керування:</b> Рух: <kbd>WASD</kbd>/<kbd>←↑→↓</kbd> • Стрибок (Dash): <kbd>Space</kbd> • Постріл: <kbd>Q</kbd> • Взаємодія: <kbd>E</kbd> • Карта: <kbd>M</kbd> • Рестарт: <kbd>R</kbd>.<br />
+      Спочатку пройди туторіал, потім почнеться гра: величезна арена 100×100, рухома камера, 10 завдань, 8 амонгасів (2 імпостери), хвилі зомбі та Dash-доріжка з попередженням про спайки.
     </div>
   </div>
 
@@ -103,318 +103,718 @@
       score: document.getElementById("score"),
       tasks: document.getElementById("tasks"),
       found: document.getElementById("found"),
-      message: document.getElementById("message"),
+      zombies: document.getElementById("zombies"),
+      message: document.getElementById("message")
     };
 
+    const view = { w: canvas.width, h: canvas.height };
     const world = {
-      w: canvas.width,
-      h: canvas.height,
-      arenaW: 610,
-      dashX: 620,
+      tile: 64,
+      tilesX: 100,
+      tilesY: 100,
+      arenaW: 6400,
+      arenaH: 6400,
+      dashLaneWidth: 320
     };
+
+    const camera = { x: 0, y: 0 };
 
     const state = {
       keys: {},
       bullets: [],
       enemyBullets: [],
       enemies: [],
+      zombies: [],
       tasks: [],
       crew: [],
-      dashObstacles: [],
-      dashSpeed: 4.8,
+      dashEvents: [],
       score: 0,
-      hp: 100,
+      hp: 200,
       taskDone: 0,
       impostorsFound: 0,
-      totalTasks: 3,
+      totalTasks: 10,
       totalImpostors: 2,
+      totalCrew: 8,
       over: false,
       win: false,
-      msg: "Виконай завдання і вистеж імпосторів!",
-      time: 0,
+      showMap: false,
+      msg: "",
+      frame: 0,
+      tutorial: {
+        active: true,
+        step: 0,
+        doneMove: false,
+        doneShoot: false,
+        doneInteract: false,
+        doneJump: false,
+        doneMap: false,
+        finished: false
+      }
     };
 
     const player = {
-      x: 120, y: 180, r: 16, speed: 2.8, fireCooldown: 0,
-      dirX: 1, dirY: 0,
-      dash: { y: 420, w: 28, h: 28, vy: 0, onGround: true }
+      x: 320,
+      y: 320,
+      r: 18,
+      speed: 4,
+      fireCooldown: 0,
+      dirX: 1,
+      dirY: 0,
+      dash: { y: 430, w: 28, h: 28, vy: 0, onGround: true }
     };
 
-    const blocks = [
-      {x: 60, y: 70, w: 80, h: 80},
-      {x: 220, y: 110, w: 90, h: 70},
-      {x: 390, y: 50, w: 110, h: 100},
-      {x: 500, y: 220, w: 90, h: 90},
-      {x: 130, y: 300, w: 120, h: 90},
-      {x: 320, y: 280, w: 120, h: 70},
-    ];
+    function clamp(v, a, b) { return Math.max(a, Math.min(v, b)); }
+    function rand(min, max) { return Math.random() * (max - min) + min; }
+    function dist(a, b, x, y) { return Math.hypot(a - x, b - y); }
 
-    function reset() {
-      state.bullets = [];
-      state.enemyBullets = [];
-      state.enemies = [
-        {x: 540, y: 120, r: 15, hp: 35, cd: 0},
-        {x: 500, y: 390, r: 15, hp: 35, cd: 0},
-        {x: 350, y: 190, r: 15, hp: 35, cd: 0},
-      ];
-      state.tasks = [
-        {x: 95, y: 430, done: false},
-        {x: 450, y: 430, done: false},
-        {x: 565, y: 60, done: false},
-      ];
-      state.crew = [
-        {x: 270, y: 420, impostor: true, scanned: false},
-        {x: 550, y: 350, impostor: false, scanned: false},
-        {x: 70, y: 180, impostor: false, scanned: false},
-        {x: 430, y: 170, impostor: true, scanned: false},
-      ];
-      state.dashObstacles = [];
-      for (let i = 0; i < 8; i++) {
-        state.dashObstacles.push({
-          x: world.w + i * 170,
-          y: 460,
-          w: 24 + (i % 3) * 8,
-          h: 40 + (i % 2) * 18
+    function createBlocks() {
+      const blocks = [];
+      for (let i = 0; i < 280; i++) {
+        const w = world.tile * (1 + Math.floor(Math.random() * 3));
+        const h = world.tile * (1 + Math.floor(Math.random() * 2));
+        blocks.push({
+          x: Math.floor(Math.random() * (world.arenaW - w)),
+          y: Math.floor(Math.random() * (world.arenaH - h)),
+          w, h
         });
       }
+      return blocks;
+    }
+
+    let blocks = createBlocks();
+
+    function texturedRect(x, y, w, h, base, line, step = 8) {
+      ctx.fillStyle = base;
+      ctx.fillRect(x, y, w, h);
+      ctx.strokeStyle = line;
+      ctx.lineWidth = 1;
+      for (let i = 0; i < w + h; i += step) {
+        ctx.beginPath();
+        ctx.moveTo(x + i, y);
+        ctx.lineTo(x, y + i);
+        ctx.stroke();
+      }
+    }
+
+    function drawPlayer(px, py) {
+      ctx.fillStyle = "#2ee6a8";
+      ctx.beginPath(); ctx.arc(px, py, player.r, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = "#b8ffec";
+      ctx.beginPath(); ctx.arc(px - 5, py - 4, 5, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = "#116e4f";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(px, py);
+      ctx.lineTo(px + player.dirX * 20, py + player.dirY * 20);
+      ctx.stroke();
+    }
+
+    function drawAmong(c, sx, sy) {
+      ctx.fillStyle = c.stateColor;
+      ctx.beginPath(); ctx.roundRect(sx - 10, sy - 14, 20, 28, 8); ctx.fill();
+      ctx.fillStyle = "#d7f0ff";
+      ctx.fillRect(sx - 8, sy - 8, 16, 8);
+      ctx.fillStyle = "#243";
+      ctx.fillRect(sx - 8, sy + 11, 6, 3);
+      ctx.fillRect(sx + 2, sy + 11, 6, 3);
+    }
+
+    function resetWorld() {
+      blocks = createBlocks();
+      state.bullets = [];
+      state.enemyBullets = [];
+      state.enemies = [];
+      for (let i = 0; i < 14; i++) {
+        state.enemies.push({
+          x: rand(300, world.arenaW - 300),
+          y: rand(300, world.arenaH - 300),
+          r: 16,
+          hp: 45,
+          cd: 0,
+          vx: 0,
+          vy: 0
+        });
+      }
+
+      state.zombies = [];
+      for (let i = 0; i < 10; i++) {
+        spawnZombie(true);
+      }
+
+      state.tasks = [];
+      for (let i = 0; i < state.totalTasks; i++) {
+        state.tasks.push({ x: rand(200, world.arenaW - 200), y: rand(200, world.arenaH - 200), done: false });
+      }
+
+      const impostorIndices = new Set();
+      while (impostorIndices.size < state.totalImpostors) impostorIndices.add(Math.floor(Math.random() * state.totalCrew));
+      state.crew = [];
+      for (let i = 0; i < state.totalCrew; i++) {
+        const impostor = impostorIndices.has(i);
+        state.crew.push({
+          x: rand(200, world.arenaW - 200),
+          y: rand(200, world.arenaH - 200),
+          vx: rand(-1, 1),
+          vy: rand(-1, 1),
+          speed: 1.4,
+          scanned: false,
+          impostor,
+          chasing: false,
+          helperCooldown: 0,
+          stateColor: "#c8cedf"
+        });
+      }
+
+      state.dashEvents = [];
+      let x = 130;
+      for (let i = 0; i < 10; i++) {
+        state.dashEvents.push({
+          x: x + i * 145,
+          phase: "warn",
+          timer: 85,
+          w: 32,
+          h: 36,
+          hit: false
+        });
+      }
+
       state.score = 0;
-      state.hp = 100;
+      state.hp = 200;
       state.taskDone = 0;
       state.impostorsFound = 0;
       state.over = false;
       state.win = false;
-      state.msg = "Виконай завдання і вистеж імпосторів!";
-      state.time = 0;
-      player.x = 120; player.y = 180;
-      player.fireCooldown = 0; player.dirX = 1; player.dirY = 0;
-      player.dash.y = 420; player.dash.vy = 0; player.dash.onGround = true;
+      state.frame = 0;
+      state.msg = "Виконуй завдання, виживай і викривай імпосторів.";
+      player.x = 320;
+      player.y = 320;
+      player.fireCooldown = 0;
+      player.dirX = 1;
+      player.dirY = 0;
+      player.dash.y = 430;
+      player.dash.vy = 0;
+      player.dash.onGround = true;
+      updateCamera();
       updateHud();
     }
 
-    function updateHud() {
-      ui.hp.textContent = state.hp;
-      ui.score.textContent = state.score;
-      ui.tasks.textContent = `${state.taskDone}/${state.totalTasks}`;
-      ui.found.textContent = `${state.impostorsFound}/${state.totalImpostors}`;
-      ui.message.textContent = state.msg;
+    function resetGame() {
+      state.tutorial = {
+        active: true,
+        step: 0,
+        doneMove: false,
+        doneShoot: false,
+        doneInteract: false,
+        doneJump: false,
+        doneMap: false,
+        finished: false
+      };
+      resetWorld();
+    }
+
+    function spawnZombie(initial = false) {
+      const edge = Math.floor(Math.random() * 4);
+      let x = 0, y = 0;
+      if (edge === 0) { x = rand(0, world.arenaW); y = -50; }
+      if (edge === 1) { x = world.arenaW + 50; y = rand(0, world.arenaH); }
+      if (edge === 2) { x = rand(0, world.arenaW); y = world.arenaH + 50; }
+      if (edge === 3) { x = -50; y = rand(0, world.arenaH); }
+      if (initial) { x = rand(100, world.arenaW - 100); y = rand(100, world.arenaH - 100); }
+      state.zombies.push({ x, y, r: 15, hp: 50, speed: 1.5 + Math.random() * 1.2, hitCd: 0 });
     }
 
     function circleRectCollision(cx, cy, r, rect) {
       const testX = Math.max(rect.x, Math.min(cx, rect.x + rect.w));
       const testY = Math.max(rect.y, Math.min(cy, rect.y + rect.h));
-      const dx = cx - testX, dy = cy - testY;
+      const dx = cx - testX;
+      const dy = cy - testY;
       return dx * dx + dy * dy <= r * r;
     }
 
-    function canMoveTo(nx, ny) {
-      if (nx - player.r < 0 || nx + player.r > world.arenaW || ny - player.r < 0 || ny + player.r > world.h) return false;
-      for (const b of blocks) if (circleRectCollision(nx, ny, player.r, b)) return false;
+    function canMoveArena(nx, ny, r = player.r) {
+      if (nx - r < 0 || ny - r < 0 || nx + r > world.arenaW || ny + r > world.arenaH) return false;
+      for (const b of blocks) if (circleRectCollision(nx, ny, r, b)) return false;
       return true;
+    }
+
+    function updateCamera() {
+      camera.x = clamp(player.x - (view.w - world.dashLaneWidth) / 2, 0, world.arenaW - (view.w - world.dashLaneWidth));
+      camera.y = clamp(player.y - view.h / 2, 0, world.arenaH - view.h);
+    }
+
+    function updateHud() {
+      ui.hp.textContent = Math.max(0, Math.round(state.hp));
+      ui.score.textContent = state.score;
+      ui.tasks.textContent = `${state.taskDone}/${state.totalTasks}`;
+      ui.found.textContent = `${state.impostorsFound}/${state.totalImpostors}`;
+      ui.zombies.textContent = state.zombies.length;
+      ui.message.textContent = state.msg;
+    }
+
+    function tutorialText() {
+      const t = state.tutorial;
+      if (t.step === 0) return "Туторіал 1/5: Рухайся WASD/стрілками.";
+      if (t.step === 1) return "Туторіал 2/5: Натисни Q щоб вистрілити.";
+      if (t.step === 2) return "Туторіал 3/5: Підійди до жовтого терміналу і натисни E.";
+      if (t.step === 3) return "Туторіал 4/5: На Dash-доріжці стрибай ПРОБІЛОМ.";
+      if (t.step === 4) return "Туторіал 5/5: Натисни M для карти, потім ще раз M щоб закрити.";
+      return "Туторіал завершено! Успіхів.";
+    }
+
+    function updateTutorial() {
+      const t = state.tutorial;
+      state.msg = tutorialText();
+      if (t.step === 0 && (state.keys["w"] || state.keys["a"] || state.keys["s"] || state.keys["d"] || state.keys["ArrowUp"] || state.keys["ArrowDown"] || state.keys["ArrowLeft"] || state.keys["ArrowRight"])) {
+        t.step = 1;
+      }
+      if (t.step === 1 && t.doneShoot) t.step = 2;
+      if (t.step === 2 && t.doneInteract) t.step = 3;
+      if (t.step === 3 && t.doneJump) t.step = 4;
+      if (t.step === 4 && t.doneMap) {
+        t.step = 5;
+        t.active = false;
+        t.finished = true;
+        state.msg = "Туторіал завершено. Гра почалась!";
+      }
+    }
+
+    function completeRandomTaskNearCrew(crewMember) {
+      for (const t of state.tasks) {
+        if (!t.done && dist(crewMember.x, crewMember.y, t.x, t.y) < 120) {
+          t.done = true;
+          state.taskDone++;
+          state.score += 30;
+          state.msg = "Добрий амонгас допоміг виконати завдання!";
+          return;
+        }
+      }
+    }
+
+    function updateArenaEntities() {
+      for (const e of state.enemies) {
+        if (e.hp <= 0) continue;
+        const dx = player.x - e.x;
+        const dy = player.y - e.y;
+        const d = Math.hypot(dx, dy) || 1;
+        const speed = 1.25;
+        const nx = e.x + (dx / d) * speed;
+        const ny = e.y + (dy / d) * speed;
+        if (canMoveArena(nx, ny, e.r)) { e.x = nx; e.y = ny; }
+
+        e.cd -= 1;
+        if (e.cd <= 0 && d < 420) {
+          state.enemyBullets.push({ x: e.x, y: e.y, vx: (dx / d) * 4.2, vy: (dy / d) * 4.2, life: 100 });
+          e.cd = 45 + Math.random() * 50;
+        }
+      }
+
+      if (state.frame % 170 === 0 && state.zombies.length < 24) spawnZombie();
+
+      for (const z of state.zombies) {
+        if (z.hp <= 0) continue;
+        const dx = player.x - z.x;
+        const dy = player.y - z.y;
+        const d = Math.hypot(dx, dy) || 1;
+        const nx = z.x + (dx / d) * z.speed;
+        const ny = z.y + (dy / d) * z.speed;
+        if (canMoveArena(nx, ny, z.r)) { z.x = nx; z.y = ny; }
+        if (z.hitCd > 0) z.hitCd -= 1;
+        if (d < z.r + player.r + 6 && z.hitCd <= 0) {
+          state.hp -= 10;
+          z.hitCd = 35;
+          state.msg = "Зомбі вкусив тебе!";
+        }
+      }
+
+      for (const c of state.crew) {
+        const targetX = c.chasing ? player.x : c.x + c.vx * 50;
+        const targetY = c.chasing ? player.y : c.y + c.vy * 50;
+        const dx = targetX - c.x;
+        const dy = targetY - c.y;
+        const d = Math.hypot(dx, dy) || 1;
+        const speed = c.chasing ? 2.5 : c.speed;
+        const nx = c.x + (dx / d) * speed;
+        const ny = c.y + (dy / d) * speed;
+
+        if (canMoveArena(nx, ny, 12)) {
+          c.x = nx;
+          c.y = ny;
+        } else {
+          c.vx = rand(-1, 1);
+          c.vy = rand(-1, 1);
+        }
+
+        if (Math.random() < 0.01 && !c.chasing) {
+          c.vx = rand(-1, 1);
+          c.vy = rand(-1, 1);
+        }
+
+        if (c.helperCooldown > 0) c.helperCooldown--;
+        if (c.scanned && !c.impostor && c.helperCooldown <= 0) {
+          completeRandomTaskNearCrew(c);
+          c.helperCooldown = 280;
+        }
+
+        if (c.chasing && dist(c.x, c.y, player.x, player.y) < 24) {
+          state.hp -= 14;
+        }
+      }
+
+      state.zombies = state.zombies.filter(z => z.hp > 0);
+      state.enemies = state.enemies.filter(e => e.hp > 0);
+    }
+
+    function updateProjectiles() {
+      for (const b of state.bullets) {
+        b.x += b.vx;
+        b.y += b.vy;
+        b.life -= 1;
+      }
+      state.bullets = state.bullets.filter((b) => b.life > 0 && b.x >= 0 && b.y >= 0 && b.x <= world.arenaW && b.y <= world.arenaH);
+
+      for (const b of state.enemyBullets) {
+        b.x += b.vx;
+        b.y += b.vy;
+        b.life -= 1;
+      }
+      state.enemyBullets = state.enemyBullets.filter((b) => b.life > 0 && b.x >= 0 && b.y >= 0 && b.x <= world.arenaW && b.y <= world.arenaH);
+
+      for (const b of state.bullets) {
+        for (const e of state.enemies) {
+          if (dist(b.x, b.y, e.x, e.y) < e.r + 4) {
+            e.hp -= 20;
+            b.life = 0;
+            if (e.hp <= 0) state.score += 15;
+          }
+        }
+        for (const z of state.zombies) {
+          if (dist(b.x, b.y, z.x, z.y) < z.r + 3) {
+            z.hp -= 25;
+            b.life = 0;
+            if (z.hp <= 0) state.score += 20;
+          }
+        }
+      }
+
+      for (const b of state.enemyBullets) {
+        if (dist(b.x, b.y, player.x, player.y) < player.r + 4) {
+          state.hp -= 8;
+          b.life = 0;
+        }
+      }
+    }
+
+    function tryInteract() {
+      for (const t of state.tasks) {
+        if (!t.done && dist(player.x, player.y, t.x, t.y) < 50) {
+          t.done = true;
+          state.taskDone++;
+          state.score += 25;
+          state.msg = "Завдання виконано.";
+          state.tutorial.doneInteract = true;
+        }
+      }
+
+      for (const c of state.crew) {
+        if (!c.scanned && dist(player.x, player.y, c.x, c.y) < 45) {
+          c.scanned = true;
+          if (c.impostor) {
+            c.stateColor = "#ff4f61";
+            c.chasing = true;
+            state.impostorsFound++;
+            state.score += 40;
+            state.msg = "Імпостора викрито! Він полює на тебе.";
+          } else {
+            c.stateColor = "#50a9ff";
+            state.msg = "Добрий амонгас, тепер він допомагає.";
+          }
+        }
+      }
+    }
+
+    function updateDash() {
+      player.dash.vy += 0.55;
+      player.dash.y += player.dash.vy;
+      const floorY = view.h - 72;
+      if (player.dash.y >= floorY - player.dash.h) {
+        player.dash.y = floorY - player.dash.h;
+        player.dash.vy = 0;
+        player.dash.onGround = true;
+      } else {
+        player.dash.onGround = false;
+      }
+
+      for (const ev of state.dashEvents) {
+        ev.x -= 5.2;
+        if (ev.phase === "warn") {
+          ev.timer--;
+          if (ev.timer <= 0) {
+            ev.phase = "spike";
+            ev.timer = 75;
+          }
+        } else {
+          ev.timer--;
+          const px = view.w - world.dashLaneWidth + 60;
+          const py = player.dash.y;
+          const pw = player.dash.w;
+          const ph = player.dash.h;
+          const spikeX = ev.x;
+          const spikeY = view.h - 72 - ev.h;
+          if (!ev.hit && px < spikeX + ev.w && px + pw > spikeX && py < spikeY + ev.h && py + ph > spikeY) {
+            state.hp -= 20;
+            ev.hit = true;
+            state.msg = "Ти не стрибнув через спайк: -20 HP";
+          }
+        }
+
+        if (ev.x < view.w - world.dashLaneWidth - 40) {
+          ev.x = view.w + Math.random() * 340;
+          ev.phase = "warn";
+          ev.timer = 90;
+          ev.w = 24 + Math.random() * 22;
+          ev.h = 30 + Math.random() * 40;
+          ev.hit = false;
+          state.score += 5;
+        }
+      }
     }
 
     function update() {
       if (state.over) return;
-      state.time++;
-      state.score += 0.05;
+      state.frame++;
 
-      let mx = 0, my = 0;
+      if (state.tutorial.active) {
+        updateTutorial();
+      }
+
+      let mx = 0;
+      let my = 0;
       if (state.keys["ArrowLeft"] || state.keys["a"]) mx -= 1;
       if (state.keys["ArrowRight"] || state.keys["d"]) mx += 1;
       if (state.keys["ArrowUp"] || state.keys["w"]) my -= 1;
       if (state.keys["ArrowDown"] || state.keys["s"]) my += 1;
       if (mx || my) {
         const len = Math.hypot(mx, my) || 1;
-        mx /= len; my /= len;
-        player.dirX = mx; player.dirY = my;
+        player.dirX = mx / len;
+        player.dirY = my / len;
       }
-      const nx = player.x + mx * player.speed;
-      const ny = player.y + my * player.speed;
-      if (canMoveTo(nx, player.y)) player.x = nx;
-      if (canMoveTo(player.x, ny)) player.y = ny;
+
+      const nx = player.x + player.dirX * player.speed * (mx || my ? 1 : 0);
+      const ny = player.y + player.dirY * player.speed * (mx || my ? 1 : 0);
+      if (canMoveArena(nx, player.y)) player.x = nx;
+      if (canMoveArena(player.x, ny)) player.y = ny;
 
       if (player.fireCooldown > 0) player.fireCooldown--;
-      if (state.keys[" "] && player.fireCooldown <= 0) {
-        state.bullets.push({x: player.x, y: player.y, vx: player.dirX * 6, vy: player.dirY * 6, life: 60});
-        player.fireCooldown = 18;
+      if (state.keys["q"] && player.fireCooldown <= 0) {
+        state.bullets.push({ x: player.x, y: player.y, vx: player.dirX * 8, vy: player.dirY * 8, life: 80 });
+        player.fireCooldown = 12;
+        state.tutorial.doneShoot = true;
       }
 
-      for (const b of state.bullets) { b.x += b.vx; b.y += b.vy; b.life--; }
-      state.bullets = state.bullets.filter(b => b.life > 0 && b.x > 0 && b.x < world.arenaW && b.y > 0 && b.y < world.h);
+      updateProjectiles();
+      updateArenaEntities();
+      updateDash();
 
-      for (const e of state.enemies) {
-        if (e.hp <= 0) continue;
-        const dx = player.x - e.x, dy = player.y - e.y;
-        const dist = Math.hypot(dx, dy) || 1;
-        const step = 1.0;
-        const ex = e.x + (dx / dist) * step;
-        const ey = e.y + (dy / dist) * step;
-        if (!blocks.some(b => circleRectCollision(ex, ey, e.r, b))) { e.x = ex; e.y = ey; }
-        if (e.cd > 0) e.cd--;
-        if (e.cd <= 0 && dist < 280) {
-          state.enemyBullets.push({x: e.x, y: e.y, vx: (dx / dist) * 3.8, vy: (dy / dist) * 3.8, life: 90});
-          e.cd = 55 + Math.random() * 25;
-        }
-      }
+      updateCamera();
 
-      for (const eb of state.enemyBullets) { eb.x += eb.vx; eb.y += eb.vy; eb.life--; }
-      state.enemyBullets = state.enemyBullets.filter(b => b.life > 0 && b.x > 0 && b.x < world.arenaW && b.y > 0 && b.y < world.h);
-
-      for (const b of state.bullets) {
-        for (const e of state.enemies) {
-          if (e.hp > 0 && Math.hypot(b.x - e.x, b.y - e.y) < e.r + 3) {
-            e.hp -= 15;
-            b.life = 0;
-            if (e.hp <= 0) state.score += 35;
-          }
-        }
-      }
-
-      for (const eb of state.enemyBullets) {
-        if (Math.hypot(eb.x - player.x, eb.y - player.y) < player.r + 3) {
-          eb.life = 0;
-          state.hp -= 8;
-          state.msg = "Обережно! Тебе підбили.";
-        }
-      }
-
-      if (state.keys["e"]) {
-        for (const t of state.tasks) {
-          if (!t.done && Math.hypot(player.x - t.x, player.y - t.y) < 34) {
-            t.done = true;
-            state.taskDone++;
-            state.score += 45;
-            state.msg = "Завдання виконано!";
-          }
-        }
-        for (const c of state.crew) {
-          if (!c.scanned && Math.hypot(player.x - c.x, player.y - c.y) < 34) {
-            c.scanned = true;
-            if (c.impostor) {
-              state.impostorsFound++;
-              state.msg = "Імпостора викрито!";
-              state.score += 60;
-            } else {
-              state.msg = "Це мирний член екіпажу.";
-            }
-          }
-        }
-      }
-
-      // Geometry Dash lane
-      player.dash.vy += 0.48;
-      player.dash.y += player.dash.vy;
-      const floorY = 448;
-      if (player.dash.y >= floorY - player.dash.h) {
-        player.dash.y = floorY - player.dash.h;
-        player.dash.vy = 0;
-        player.dash.onGround = true;
-      } else player.dash.onGround = false;
-
-      if ((state.keys["ArrowUp"] || state.keys["w"]) && player.dash.onGround) {
-        player.dash.vy = -9.6;
-      }
-
-      for (const o of state.dashObstacles) {
-        o.x -= state.dashSpeed;
-        if (o.x + o.w < world.dashX + 5) {
-          o.x = world.w + Math.random() * 230;
-          o.h = 35 + Math.random() * 55;
-          o.w = 20 + Math.random() * 24;
-          state.score += 12;
-        }
-        const px = world.dashX + 45, py = player.dash.y, pw = player.dash.w, ph = player.dash.h;
-        if (px < o.x + o.w && px + pw > o.x && py < o.y + o.h && py + ph > o.y) {
-          state.hp -= 0.8;
-          state.msg = "Ти зачепив перешкоду в Dash-зоні!";
-        }
-      }
-
-      state.enemies = state.enemies.filter(e => e.hp > 0 || state.time % 2 === 0);
       if (state.hp <= 0) {
         state.over = true;
-        state.msg = "Гру завершено. Натисни R для рестарту.";
+        state.msg = "Тебе перемогли. Натисни R для рестарту.";
       }
       if (state.taskDone >= state.totalTasks && state.impostorsFound >= state.totalImpostors) {
-        state.win = true;
         state.over = true;
-        state.msg = "Перемога! Ти закрив місію MegaFuse 🎉 (R — зіграти ще)";
+        state.win = true;
+        state.score += 100;
+        state.msg = "Перемога! Ти завершив усі місії MegaFuse.";
       }
+
       updateHud();
     }
 
-    function drawGrid() {
-      ctx.strokeStyle = "rgba(255,255,255,0.05)";
-      for (let x = 0; x < world.arenaW; x += 30) {
-        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, world.h); ctx.stroke();
+    function drawArena() {
+      const arenaScreenW = view.w - world.dashLaneWidth;
+
+      texturedRect(0, 0, arenaScreenW, view.h, "#183c1f", "rgba(0,0,0,0.07)", 18);
+
+      const startX = Math.floor(camera.x / world.tile) * world.tile;
+      const endX = camera.x + arenaScreenW + world.tile;
+      const startY = Math.floor(camera.y / world.tile) * world.tile;
+      const endY = camera.y + view.h + world.tile;
+
+      for (let x = startX; x <= endX; x += world.tile) {
+        for (let y = startY; y <= endY; y += world.tile) {
+          const sx = x - camera.x;
+          const sy = y - camera.y;
+          texturedRect(sx, sy, world.tile, world.tile, "rgba(40,110,55,0.25)", "rgba(14,45,20,0.25)", 16);
+        }
       }
-      for (let y = 0; y < world.h; y += 30) {
-        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(world.arenaW, y); ctx.stroke();
+
+      for (const b of blocks) {
+        const sx = b.x - camera.x;
+        const sy = b.y - camera.y;
+        if (sx + b.w < 0 || sy + b.h < 0 || sx > arenaScreenW || sy > view.h) continue;
+        texturedRect(sx, sy, b.w, b.h, "#6e5636", "rgba(30,20,10,0.35)", 12);
+        ctx.fillStyle = "#7da34d";
+        ctx.fillRect(sx, sy, b.w, 10);
+      }
+
+      for (const t of state.tasks) {
+        const sx = t.x - camera.x;
+        const sy = t.y - camera.y;
+        if (sx < -20 || sy < -20 || sx > arenaScreenW + 20 || sy > view.h + 20) continue;
+        texturedRect(sx - 12, sy - 12, 24, 24, t.done ? "#48cc86" : "#f3c654", "rgba(40,40,40,0.2)", 6);
+      }
+
+      for (const c of state.crew) {
+        const sx = c.x - camera.x;
+        const sy = c.y - camera.y;
+        if (sx < -30 || sy < -30 || sx > arenaScreenW + 30 || sy > view.h + 30) continue;
+        drawAmong(c, sx, sy);
+      }
+
+      for (const z of state.zombies) {
+        const sx = z.x - camera.x;
+        const sy = z.y - camera.y;
+        if (sx < -30 || sy < -30 || sx > arenaScreenW + 30 || sy > view.h + 30) continue;
+        ctx.fillStyle = "#78b95a";
+        ctx.beginPath(); ctx.arc(sx, sy, z.r, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = "#1f5b22";
+        ctx.fillRect(sx - 8, sy - 6, 5, 5);
+        ctx.fillRect(sx + 3, sy - 6, 5, 5);
+      }
+
+      for (const e of state.enemies) {
+        const sx = e.x - camera.x;
+        const sy = e.y - camera.y;
+        if (sx < -30 || sy < -30 || sx > arenaScreenW + 30 || sy > view.h + 30) continue;
+        ctx.fillStyle = "#ff7b97";
+        ctx.beginPath(); ctx.arc(sx, sy, e.r, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = "#ffe0e8";
+        ctx.fillRect(sx - 6, sy - 4, 12, 4);
+      }
+
+      const px = player.x - camera.x;
+      const py = player.y - camera.y;
+      drawPlayer(px, py);
+
+      for (const b of state.bullets) {
+        const sx = b.x - camera.x;
+        const sy = b.y - camera.y;
+        ctx.fillStyle = "#dbf7ff";
+        texturedRect(sx - 2, sy - 2, 4, 4, "#dbf7ff", "rgba(50,60,100,0.4)", 2);
+      }
+      for (const b of state.enemyBullets) {
+        const sx = b.x - camera.x;
+        const sy = b.y - camera.y;
+        texturedRect(sx - 2, sy - 2, 4, 4, "#ffa0ae", "rgba(70,0,0,0.5)", 2);
       }
     }
 
-    function draw() {
-      ctx.clearRect(0, 0, world.w, world.h);
+    function drawDashLane() {
+      const lx = view.w - world.dashLaneWidth;
+      texturedRect(lx, 0, world.dashLaneWidth, view.h, "#19153a", "rgba(50,50,100,0.2)", 15);
+      texturedRect(lx + 8, view.h - 72, world.dashLaneWidth - 16, 10, "#352e73", "rgba(0,0,0,0.4)", 10);
 
-      // Arena zone
-      ctx.fillStyle = "#0c1335";
-      ctx.fillRect(0, 0, world.arenaW, world.h);
-      drawGrid();
+      const px = lx + 60;
+      const py = player.dash.y;
+      texturedRect(px, py, player.dash.w, player.dash.h, "#7de2ff", "rgba(10,50,70,0.5)", 6);
 
-      // Minecraft-like blocks
-      for (const b of blocks) {
-        ctx.fillStyle = "#5f4b32";
-        ctx.fillRect(b.x, b.y, b.w, b.h);
-        ctx.fillStyle = "#6f8f3b";
-        ctx.fillRect(b.x, b.y, b.w, 12);
+      for (const ev of state.dashEvents) {
+        if (ev.phase === "warn") {
+          ctx.fillStyle = "#ffe08a";
+          ctx.beginPath();
+          ctx.moveTo(ev.x, view.h - 92);
+          ctx.lineTo(ev.x - 12, view.h - 72);
+          ctx.lineTo(ev.x + 12, view.h - 72);
+          ctx.closePath();
+          ctx.fill();
+          ctx.fillStyle = "#442";
+          ctx.font = "12px Inter, Arial";
+          ctx.fillText("!", ev.x - 3, view.h - 77);
+        } else {
+          const y = view.h - 72;
+          const x = ev.x;
+          const spikes = Math.max(1, Math.floor(ev.w / 10));
+          for (let i = 0; i < spikes; i++) {
+            const sx = x + i * 10;
+            ctx.fillStyle = "#ff6d59";
+            ctx.beginPath();
+            ctx.moveTo(sx, y);
+            ctx.lineTo(sx + 5, y - ev.h);
+            ctx.lineTo(sx + 10, y);
+            ctx.closePath();
+            ctx.fill();
+            ctx.strokeStyle = "#5e1010";
+            ctx.stroke();
+          }
+        }
       }
-
-      // Tasks
-      for (const t of state.tasks) {
-        ctx.fillStyle = t.done ? "#3ccf82" : "#ffc857";
-        ctx.fillRect(t.x - 10, t.y - 10, 20, 20);
-      }
-
-      // Crew
-      for (const c of state.crew) {
-        if (c.scanned && c.impostor) ctx.fillStyle = "#ff4d6d";
-        else if (c.scanned) ctx.fillStyle = "#63b3ff";
-        else ctx.fillStyle = "#bfc6f9";
-        ctx.beginPath();
-        ctx.arc(c.x, c.y, 11, 0, Math.PI * 2);
-        ctx.fill();
-      }
-
-      // Player (Brawl-ish)
-      ctx.fillStyle = "#5be7a9";
-      ctx.beginPath();
-      ctx.arc(player.x, player.y, player.r, 0, Math.PI * 2);
-      ctx.fill();
-
-      for (const e of state.enemies) {
-        ctx.fillStyle = "#ff6f91";
-        ctx.beginPath(); ctx.arc(e.x, e.y, e.r, 0, Math.PI * 2); ctx.fill();
-      }
-      ctx.fillStyle = "#e6f1ff";
-      for (const b of state.bullets) ctx.fillRect(b.x - 2, b.y - 2, 4, 4);
-      ctx.fillStyle = "#ffa7b8";
-      for (const b of state.enemyBullets) ctx.fillRect(b.x - 2, b.y - 2, 4, 4);
-
-      // Dash zone
-      ctx.fillStyle = "#151038";
-      ctx.fillRect(world.dashX, 0, world.w - world.dashX, world.h);
-      ctx.fillStyle = "#2a245b";
-      ctx.fillRect(world.dashX + 8, 448, world.w - world.dashX - 16, 8);
-
-      ctx.fillStyle = "#7de2ff";
-      ctx.fillRect(world.dashX + 45, player.dash.y, player.dash.w, player.dash.h);
-
-      ctx.fillStyle = "#ff7b54";
-      for (const o of state.dashObstacles) ctx.fillRect(o.x, o.y, o.w, o.h);
 
       ctx.fillStyle = "#9aa2d3";
       ctx.font = "13px Inter, Arial";
-      ctx.fillText("Dash-смуга", world.dashX + 12, 20);
-      ctx.fillText("Арена", 14, 20);
+      ctx.fillText("Dash-доріжка (Space = jump)", lx + 14, 22);
+    }
+
+    function drawMapOverlay() {
+      if (!state.showMap) return;
+      const w = 420;
+      const h = 420;
+      const x = (view.w - w) / 2;
+      const y = (view.h - h) / 2;
+      ctx.fillStyle = "rgba(8,12,30,0.92)";
+      ctx.fillRect(x, y, w, h);
+      ctx.strokeStyle = "#6f7ad9";
+      ctx.strokeRect(x, y, w, h);
+
+      const sx = w / world.arenaW;
+      const sy = h / world.arenaH;
+
+      for (const t of state.tasks) {
+        if (t.done) continue;
+        ctx.fillStyle = "#f3c654";
+        ctx.fillRect(x + t.x * sx - 2, y + t.y * sy - 2, 4, 4);
+      }
+      for (const c of state.crew) {
+        ctx.fillStyle = c.impostor ? "#ff4f61" : "#50a9ff";
+        ctx.fillRect(x + c.x * sx - 2, y + c.y * sy - 2, 4, 4);
+      }
+      for (const z of state.zombies) {
+        ctx.fillStyle = "#7ac65b";
+        ctx.fillRect(x + z.x * sx - 1, y + z.y * sy - 1, 3, 3);
+      }
+      ctx.fillStyle = "#2ee6a8";
+      ctx.fillRect(x + player.x * sx - 3, y + player.y * sy - 3, 6, 6);
+
+      const camW = (view.w - world.dashLaneWidth) * sx;
+      const camH = view.h * sy;
+      ctx.strokeStyle = "#ffffff";
+      ctx.strokeRect(x + camera.x * sx, y + camera.y * sy, camW, camH);
+
+      ctx.fillStyle = "#d7defa";
+      ctx.font = "14px Inter, Arial";
+      ctx.fillText("Карта 100×100 (M щоб закрити)", x + 12, y + 20);
+    }
+
+    function drawTutorialOverlay() {
+      if (!state.tutorial.active) return;
+      ctx.fillStyle = "rgba(0,0,0,0.55)";
+      ctx.fillRect(0, 0, view.w, view.h);
+      ctx.fillStyle = "#eef2ff";
+      ctx.font = "24px Inter, Arial";
+      ctx.fillText("Туторіал", view.w / 2 - 50, 120);
+      ctx.font = "17px Inter, Arial";
+      ctx.fillText(tutorialText(), view.w / 2 - 270, 165);
+      ctx.font = "14px Inter, Arial";
+      ctx.fillStyle = "#a9b3e8";
+      ctx.fillText("Після завершення туторіалу стартує повна гра.", view.w / 2 - 170, 194);
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, view.w, view.h);
+      drawArena();
+      drawDashLane();
+      drawMapOverlay();
+      drawTutorialOverlay();
     }
 
     function loop() {
@@ -426,15 +826,32 @@
     window.addEventListener("keydown", (e) => {
       const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
       state.keys[key] = true;
+
       if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", " "].includes(e.key)) e.preventDefault();
-      if (key === "r") reset();
+
+      if (key === " ") {
+        if (player.dash.onGround) {
+          player.dash.vy = -10.4;
+          state.tutorial.doneJump = true;
+        }
+      }
+
+      if (key === "e") tryInteract();
+
+      if (key === "m") {
+        state.showMap = !state.showMap;
+        if (state.tutorial.step === 4 && !state.showMap) state.tutorial.doneMap = true;
+      }
+
+      if (key === "r") resetGame();
     });
+
     window.addEventListener("keyup", (e) => {
       const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
       state.keys[key] = false;
     });
 
-    reset();
+    resetGame();
     loop();
   </script>
 </body>
