@@ -167,7 +167,7 @@
         crewCount: 8, impostors: 2, initialZombies: 10, zombieSpawnEvery: 20, tasks: 10
       },
       hard: {
-        hp: 250, tiles: 150, showChars: "none", enemyDamage: 12, zombieDamage: 15,
+        hp: 150, tiles: 150, showChars: "none", enemyDamage: 12, zombieDamage: 15,
         spikeMin: 10, spikeMax: 15, spikesEnabled: true,
         crewCount: 10, impostors: 4, initialZombies: 15, zombieSpawnEvery: 15, tasks: 15
       }
@@ -361,6 +361,7 @@
           helperCooldown: 0,
           targetTaskId: null,
           workTimer: 0,
+          touchDamageCooldown: 0,
           stateColor: "#c8cedf"
         });
       }
@@ -489,6 +490,7 @@
       }
 
       for (const c of state.crew) {
+        if (c.touchDamageCooldown > 0) c.touchDamageCooldown -= dt;
         if (c.scanned && !c.impostor) {
           if (c.targetTaskId === null || state.tasks.find((t) => t.id === c.targetTaskId)?.done) {
             const unfinished = state.tasks.filter((t) => !t.done);
@@ -543,7 +545,10 @@
         }
 
         if (c.chasing && dist(c.x, c.y, player.x, player.y) < 24) {
-          state.hp -= 14;
+          if (c.touchDamageCooldown <= 0) {
+            state.hp -= 10;
+            c.touchDamageCooldown = 2;
+          }
         }
       }
 
