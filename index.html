@@ -85,12 +85,13 @@
         <span>🔧 Завдання: <b id="tasks"></b></span>
         <span>👾 Імпосторів знайдено: <b id="found"></b></span>
         <span>🧟 Зомбі: <b id="zombies"></b></span>
+        <span>🔫 Набої: <b id="ammo"></b></span>
       </div>
       <div id="message"></div>
     </div>
     <canvas id="game" width="960" height="540"></canvas>
     <div class="controls">
-      <b>Керування:</b> Рух: <kbd>WASD</kbd>/<kbd>←↑→↓</kbd> • Стрибок (Dash): <kbd>Space</kbd> • Постріл: <kbd>Q</kbd> • Взаємодія: <kbd>E</kbd> • Карта: <kbd>M</kbd> • Рестарт: <kbd>R</kbd>.<br />
+      <b>Керування:</b> Рух: <kbd>WASD</kbd> • Приціл: <kbd>←↑→↓</kbd> • Стрибок (Dash): <kbd>Space</kbd> • Постріл: <kbd>Q</kbd> • Взаємодія: <kbd>E</kbd> • Карта: <kbd>M</kbd> • Рестарт: <kbd>R</kbd>.<br />
       Величезна арена 100×100, рухома камера, 10 завдань, 8 амонгасів (2 імпостери), хвилі зомбі та Dash-доріжка. Спайки в авторанері з’являються раз на 15-45 секунд (з коротким попередженням).
     </div>
   </div>
@@ -104,6 +105,7 @@
       tasks: document.getElementById("tasks"),
       found: document.getElementById("found"),
       zombies: document.getElementById("zombies"),
+      ammo: document.getElementById("ammo"),
       message: document.getElementById("message")
     };
 
@@ -154,6 +156,10 @@
       fireCooldown: 0,
       dirX: 1,
       dirY: 0,
+      ammo: 20,
+      maxAmmo: 20,
+      reloading: false,
+      reloadTimer: 0,
       dash: { y: 430, w: 28, h: 28, vy: 0, onGround: true }
     };
 
@@ -277,6 +283,9 @@
       player.fireCooldown = 0;
       player.dirX = 1;
       player.dirY = 0;
+      player.ammo = player.maxAmmo;
+      player.reloading = false;
+      player.reloadTimer = 0;
       player.dash.y = 430;
       player.dash.vy = 0;
       player.dash.onGround = true;
@@ -325,6 +334,7 @@
       ui.tasks.textContent = `${state.taskDone}/${state.totalTasks}`;
       ui.found.textContent = `${state.impostorsFound}/${state.totalImpostors}`;
       ui.zombies.textContent = state.zombies.length;
+      ui.ammo.textContent = player.reloading ? "перезарядка..." : `${player.ammo}/${player.maxAmmo}`;
       ui.message.textContent = state.msg;
     }
 
@@ -545,25 +555,50 @@
 
       let mx = 0;
       let my = 0;
-      if (state.keys["ArrowLeft"] || state.keys["a"]) mx -= 1;
-      if (state.keys["ArrowRight"] || state.keys["d"]) mx += 1;
-      if (state.keys["ArrowUp"] || state.keys["w"]) my -= 1;
-      if (state.keys["ArrowDown"] || state.keys["s"]) my += 1;
+      if (state.keys["KeyA"]) mx -= 1;
+      if (state.keys["KeyD"]) mx += 1;
+      if (state.keys["KeyW"]) my -= 1;
+      if (state.keys["KeyS"]) my += 1;
       if (mx || my) {
         const len = Math.hypot(mx, my) || 1;
-        player.dirX = mx / len;
-        player.dirY = my / len;
+        mx /= len;
+        my /= len;
+      }
+      let ax = 0;
+      let ay = 0;
+      if (state.keys["ArrowLeft"]) ax -= 1;
+      if (state.keys["ArrowRight"]) ax += 1;
+      if (state.keys["ArrowUp"]) ay -= 1;
+      if (state.keys["ArrowDown"]) ay += 1;
+      if (ax || ay) {
+        const al = Math.hypot(ax, ay) || 1;
+        player.dirX = ax / al;
+        player.dirY = ay / al;
       }
 
-      const nx = player.x + player.dirX * player.speed * (mx || my ? 1 : 0);
-      const ny = player.y + player.dirY * player.speed * (mx || my ? 1 : 0);
+      const nx = player.x + mx * player.speed;
+      const ny = player.y + my * player.speed;
       if (canMoveArena(nx, player.y)) player.x = nx;
       if (canMoveArena(player.x, ny)) player.y = ny;
 
+      if (player.reloading) {
+        player.reloadTimer -= dt;
+        if (player.reloadTimer <= 0) {
+          player.reloading = false;
+          player.ammo = player.maxAmmo;
+          state.msg = "Перезарядка завершена.";
+        }
+      }
       if (player.fireCooldown > 0) player.fireCooldown--;
-      if (state.keys["q"] && player.fireCooldown <= 0) {
+      if (state.keys["KeyQ"] && player.fireCooldown <= 0 && !player.reloading) {
         state.bullets.push({ x: player.x, y: player.y, vx: player.dirX * 8, vy: player.dirY * 8, life: 80 });
         player.fireCooldown = 12;
+        player.ammo--;
+        if (player.ammo <= 0) {
+          player.reloading = true;
+          player.reloadTimer = 5;
+          state.msg = "Немає набоїв: перезарядка 5 секунд.";
+        }
       }
 
       updateProjectiles();
@@ -768,29 +803,27 @@
     }
 
     window.addEventListener("keydown", (e) => {
-      const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
-      state.keys[key] = true;
+      state.keys[e.code] = true;
 
       if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", " "].includes(e.key)) e.preventDefault();
 
-      if (key === " ") {
+      if (e.code === "Space") {
         if (player.dash.onGround) {
           player.dash.vy = -10.4;
         }
       }
 
-      if (key === "e") tryInteract();
+      if (e.code === "KeyE" && !e.repeat) tryInteract();
 
-      if (key === "m") {
+      if (e.code === "KeyM" && !e.repeat) {
         state.showMap = !state.showMap;
       }
 
-      if (key === "r") resetGame();
+      if (e.code === "KeyR" && !e.repeat) resetGame();
     });
 
     window.addEventListener("keyup", (e) => {
-      const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
-      state.keys[key] = false;
+      state.keys[e.code] = false;
     });
 
     resetGame();
