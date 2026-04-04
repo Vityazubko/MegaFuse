@@ -325,7 +325,11 @@
       obstacles: [],
       spawnTimer: 1.2,
       levelData: null,
-      fromEditor: false
+      fromEditor: false,
+      respawnTimer: 0,
+      emptyTimer: 0,
+      endWall: null,
+      currentLevelId: null
     };
     const editor = { name: "", tool: "block", objects: [] };
 
@@ -1124,16 +1128,16 @@
           ctx.beginPath(); ctx.moveTo(o.x, y + o.h); ctx.lineTo(o.x + o.w / 2, y); ctx.lineTo(o.x + o.w, y + o.h); ctx.closePath(); ctx.fill();
         } else if (o.type === "block") {
           ctx.fillStyle = "#8d96a5";
-          ctx.fillRect(o.x, y, 32, 32);
+          ctx.fillRect(o.x, y, 40, 40);
           ctx.strokeStyle = "#4f5664";
-          ctx.strokeRect(o.x, y, 32, 32);
+          ctx.strokeRect(o.x, y, 40, 40);
         } else {
-          ctx.fillStyle = "#ffd93b"; ctx.beginPath(); ctx.arc(o.x + 12, y + 12, 10, 0, Math.PI * 2); ctx.fill();
+          ctx.fillStyle = "#ffd93b"; ctx.beginPath(); ctx.arc(o.x + 20, y + 20, 14, 0, Math.PI * 2); ctx.fill();
         }
       }
     }
 
-    function startRunnerEndless(levelData = null, fromEditor = false) {
+    function startRunnerEndless(levelData = null, fromEditor = false, levelId = null) {
       state.mode = levelData ? "runner_level_play" : "runner_endless";
       runner.hp = 100;
       runner.score = 0;
@@ -1144,11 +1148,15 @@
       runner.onGround = true;
       runner.levelData = levelData;
       runner.fromEditor = fromEditor;
+      runner.currentLevelId = levelId;
       runner.obstacles = [];
       if (levelData) {
         for (const o of levelData) runner.obstacles.push({ ...o, x: o.x + view.w });
       }
       runner.spawnTimer = 1.2;
+      runner.respawnTimer = 0;
+      runner.emptyTimer = 0;
+      runner.endWall = null;
       mainMenu.style.display = "none";
       difficultyModal.style.display = "none";
       document.getElementById("backToEditorBtn").style.display = fromEditor ? "block" : "none";
@@ -1156,6 +1164,14 @@
     }
 
     function updateRunner(dt) {
+      if (runner.respawnTimer > 0) {
+        runner.respawnTimer -= dt;
+        if (runner.respawnTimer <= 0) {
+          runner.y = view.h - 90 - 24;
+          runner.vy = 0;
+        }
+        return;
+      }
       runner.invuln = Math.max(0, runner.invuln - dt);
       runner.scoreTick += dt;
       if (runner.scoreTick >= 1) {
@@ -1182,18 +1198,18 @@
       if (state.mode === "runner_endless") {
         runner.spawnTimer -= dt;
         if (runner.spawnTimer <= 0) {
-          const x = view.w + 30;
+          const x = view.w + 40;
           const len = 2 + Math.floor(Math.random() * 3);
           const cols = [];
           for (let i = 0; i < len; i++) {
             const bx = x + i * 40;
             cols.push(bx);
-            runner.obstacles.push({ x: bx, type: "block", w: 32, h: 32, baseY: view.h - 122 });
+            runner.obstacles.push({ x: bx, type: "block", w: 40, h: 40, baseY: view.h - 130 });
           }
           const spikeCol = cols[Math.floor(Math.random() * cols.length)];
-          runner.obstacles.push({ x: spikeCol + 1, type: "spike", w: 30, h: 30, baseY: view.h - 120 - 30 });
+          runner.obstacles.push({ x: spikeCol, type: "spike", w: 40, h: 40, baseY: view.h - 130 - 40 });
           if (Math.random() < 0.8) {
-            runner.obstacles.push({ x: spikeCol + 4, type: "orb", w: 24, h: 24, baseY: view.h - 220 - Math.random() * 70 });
+            runner.obstacles.push({ x: spikeCol, type: "orb", w: 40, h: 40, baseY: view.h - 250 - Math.random() * 90 });
           }
           runner.spawnTimer = 0.9 + Math.random() * 0.7;
         }
@@ -1211,7 +1227,11 @@
           if (px < o.x + o.w && px + pw > o.x && py < oy + o.h && py + ph > oy) {
             if (runner.invuln <= 0) {
               runner.hp -= 20;
-              runner.invuln = 5;
+              runner.invuln = state.mode === "runner_endless" ? 3 : 0;
+              if (state.mode === "runner_level_play") {
+                runner.respawnTimer = 1;
+                runner.y = -100;
+              }
             }
           }
         }
@@ -1223,6 +1243,24 @@
         runner.score += 5;
       }
       runner.obstacles = runner.obstacles.filter((o) => !o.dead && o.x > -80);
+      if (state.mode === "runner_level_play") {
+        if (runner.obstacles.length === 0 && !runner.endWall) runner.emptyTimer += dt;
+        else runner.emptyTimer = 0;
+        if (runner.emptyTimer >= 2 && !runner.endWall) runner.endWall = { x: view.w + 60, w: 40, h: 220 };
+        if (runner.endWall) {
+          runner.endWall.x -= 5.5;
+          const px = 120, py = runner.y, pw = 24, ph = 24;
+          const wy = view.h - 90 - runner.endWall.h;
+          if (px < runner.endWall.x + runner.endWall.w && px + pw > runner.endWall.x && py < wy + runner.endWall.h && py + ph > wy) {
+            const d = loadData();
+            const lv = d.levels.find((l) => l.id === runner.currentLevelId);
+            const user = d.currentUser || "guest";
+            if (lv) { lv.completedBy = lv.completedBy || []; if (!lv.completedBy.includes(user)) lv.completedBy.push(user); saveData(d); }
+            state.mode = "menu";
+            mainMenu.style.display = "grid";
+          }
+        }
+      }
       ui.message.textContent = runner.invuln > 0 ? `Захист ${runner.invuln.toFixed(1)}с` : "Runner";
       if (runner.hp <= 0) {
         state.mode = "menu";
@@ -1245,13 +1283,18 @@
           ctx.beginPath(); ctx.moveTo(o.x, base); ctx.lineTo(o.x + o.w / 2, y); ctx.lineTo(o.x + o.w, base); ctx.closePath(); ctx.fill();
         } else if (o.type === "block") {
           ctx.fillStyle = "#8d96a5";
-          ctx.fillRect(o.x, y, 32, 32);
+          ctx.fillRect(o.x, y, 40, 40);
           ctx.strokeStyle = "#4f5664";
-          ctx.strokeRect(o.x, y, 32, 32);
+          ctx.strokeRect(o.x, y, 40, 40);
         } else {
-          ctx.fillStyle = "#ffd93b"; ctx.beginPath(); ctx.arc(o.x + 12, y + 12, 10, 0, Math.PI * 2); ctx.fill();
+          ctx.fillStyle = "#ffd93b"; ctx.beginPath(); ctx.arc(o.x + 20, y + 20, 14, 0, Math.PI * 2); ctx.fill();
           ctx.strokeStyle = "#8f6d00"; ctx.stroke();
         }
+      }
+      if (runner.endWall) {
+        const wy = view.h - 90 - runner.endWall.h;
+        ctx.fillStyle = "#9aff7a";
+        ctx.fillRect(runner.endWall.x, wy, runner.endWall.w, runner.endWall.h);
       }
     }
 
@@ -1433,7 +1476,8 @@
       list.forEach((lv) => {
         const card = document.createElement("div");
         card.style.cssText = "background:#8f542f;color:#fff;border:2px solid #6adf3f;border-radius:10px;padding:8px;margin:6px 0;cursor:pointer;";
-        card.innerHTML = `<b>${lv.name}</b> by ${lv.author}<br/>👁 ${lv.views || 0} 👍 ${lv.likes || 0} 👎 ${lv.dislikes || 0}`;
+        const done = (lv.completedBy || []).includes(current) ? "✅" : "";
+        card.innerHTML = `<b>${lv.name}</b> ${done} by ${lv.author}<br/>👁 ${lv.views || 0} 👍 ${lv.likes || 0} 👎 ${lv.dislikes || 0}`;
         card.onclick = () => showLevelDetail(lv.id, type);
         levelCards.appendChild(card);
       });
@@ -1466,7 +1510,7 @@
       <button class="difficulty-btn" id="reactCommentBtn">React Comment</button>
       ${type === "mine" ? '<button class="difficulty-btn" id="publishLvBtn">Publish</button><button class="difficulty-btn" id="editLvBtn">Edit</button>' : ''}`;
       levelDetail.appendChild(actions);
-      document.getElementById("playLvBtn").onclick = () => { levelBrowser.style.display = "none"; startRunnerEndless(lv.data); };
+      document.getElementById("playLvBtn").onclick = () => { levelBrowser.style.display = "none"; startRunnerEndless(lv.data, false, lv.id); };
       document.getElementById("likeLvBtn").onclick = () => {
         if (lv.likedBy.includes(user)) return alert("Ти вже лайкнув");
         lv.likedBy.push(user); lv.likes = (lv.likes || 0) + 1; saveData(d); showLevelDetail(levelId, type);
@@ -1555,7 +1599,7 @@
       }
       const occupied = editor.objects.some((o) => Math.abs(o.x - sx) < 2 && Math.abs((o.baseY ?? 0) - sy) < 2);
       if (occupied) return;
-      editor.objects.push({ x: sx, baseY: sy, type: editor.tool, w: editor.tool === "block" ? 32 : 30, h: editor.tool === "block" ? 32 : 30 });
+      editor.objects.push({ x: sx, baseY: sy, type: editor.tool, w: 40, h: 40 });
     });
 
     state.msg = "Спочатку обери складність.";
