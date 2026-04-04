@@ -116,6 +116,27 @@
         <button class="difficulty-btn" data-difficulty="easy"><b>Легка</b><br/>75×75, без спайків, 5 завдань</button>
         <button class="difficulty-btn" data-difficulty="normal"><b>Нормальна</b><br/>100×100, спайки 15-45с, 10 завдань</button>
         <button class="difficulty-btn" data-difficulty="hard"><b>Складна</b><br/>150×150, спайки 10-15с, 15 завдань</button>
+        <button class="difficulty-btn" data-difficulty="custom"><b>Кастомна</b><br/>Власні повзунки</button>
+      </div>
+      <div id="customPanel" style="display:none; margin-top:12px; font-size:12px; line-height:1.4;">
+        <b>Головне</b><br/>
+        HP <input id="c_hp" type="range" min="50" max="500" value="200"/> <span id="v_hp">200</span><br/>
+        Завдання <input id="c_tasks" type="range" min="1" max="50" value="10"/> <span id="v_tasks">10</span><br/>
+        Карта <input id="c_map" type="range" min="50" max="200" value="100"/> <span id="v_map">100</span><br/><br/>
+        <b>Моби</b><br/>
+        <label><input id="c_zombie_on" type="checkbox" checked/> Зомбі</label>
+        Початок <input id="c_zombie_init" type="range" min="0" max="50" value="10"/> <span id="v_zombie_init">10</span>,
+        Спавн сек <input id="c_zombie_spawn" type="range" min="1" max="60" value="20"/> <span id="v_zombie_spawn">20</span><br/>
+        <label><input id="c_archer_on" type="checkbox" checked/> Лучники</label>
+        Початок <input id="c_archer_init" type="range" min="1" max="50" value="14"/> <span id="v_archer_init">14</span><br/>
+        Добрий амонгас <input id="c_good" type="range" min="0" max="15" value="6"/> <span id="v_good">6</span>,
+        Час задачі <input id="c_good_time" type="range" min="1" max="45" value="20"/> <span id="v_good_time">20</span><br/>
+        Імпостер <input id="c_imp" type="range" min="0" max="3" value="2"/> <span id="v_imp">2</span><br/><br/>
+        <b>Додатково</b><br/>
+        <label><input id="c_spikes_on" type="checkbox" checked/> Спавнити спайки</label>
+        Кожні <input id="c_spikes_every" type="range" min="7" max="60" value="20"/> <span id="v_spikes_every">20</span> сек<br/>
+        <label><input id="c_show_roles" type="checkbox"/> Зразу показувати роль амонгаса</label><br/>
+        <button id="startCustomBtn" class="difficulty-btn" style="margin-top:8px;">Старт Кастомної</button>
       </div>
     </div>
   </div>
@@ -133,7 +154,7 @@
     </div>
     <canvas id="game" width="960" height="540"></canvas>
     <div class="controls">
-      <b>Керування:</b> Рух: <kbd>WASD</kbd> • Приціл: <kbd>←↑→↓</kbd> • Стрибок (Dash): <kbd>Space</kbd> • Постріл: <kbd>Q</kbd> • Взаємодія: <kbd>E</kbd> • Карта: <kbd>M</kbd> • Рестарт: <kbd>R</kbd>.<br />
+      <b>Керування:</b> Рух: <kbd>WASD</kbd> • Приціл: <kbd>←↑→↓</kbd> • Стрибок (Dash): <kbd>Space</kbd> • Постріл: <kbd>Q</kbd> • Взаємодія: <kbd>E</kbd> • Карта: <kbd>M</kbd> • Рестарт: <kbd>R</kbd> потім <kbd>T</kbd>.<br />
       Величезна арена 100×100, рухома камера, 10 завдань, 8 амонгасів (2 імпостери), хвилі зомбі та Dash-доріжка. Спайки в авторанері з’являються раз на 15-45 секунд (з коротким попередженням).
     </div>
   </div>
@@ -159,17 +180,20 @@
       easy: {
         hp: 250, tiles: 75, showChars: "all", enemyDamage: 6, zombieDamage: 8,
         spikeMin: 999999, spikeMax: 999999, spikesEnabled: false,
-        crewCount: 6, impostors: 1, initialZombies: 0, zombieSpawnEvery: 30, tasks: 5
+        crewCount: 6, impostors: 1, goodCrew: 5, initialZombies: 0, zombieSpawnEvery: 30, tasks: 5,
+        enableZombies: true, enableArchers: true, initialArchers: 14, goodTaskTime: 20
       },
       normal: {
         hp: 200, tiles: 100, showChars: "knownRoles", enemyDamage: 8, zombieDamage: 10,
         spikeMin: 15, spikeMax: 45, spikesEnabled: true,
-        crewCount: 8, impostors: 2, initialZombies: 10, zombieSpawnEvery: 20, tasks: 10
+        crewCount: 8, impostors: 2, goodCrew: 6, initialZombies: 10, zombieSpawnEvery: 20, tasks: 10,
+        enableZombies: true, enableArchers: true, initialArchers: 14, goodTaskTime: 20
       },
       hard: {
         hp: 150, tiles: 150, showChars: "none", enemyDamage: 12, zombieDamage: 15,
         spikeMin: 10, spikeMax: 15, spikesEnabled: true,
-        crewCount: 10, impostors: 4, initialZombies: 15, zombieSpawnEvery: 15, tasks: 15
+        crewCount: 10, impostors: 4, goodCrew: 6, initialZombies: 15, zombieSpawnEvery: 15, tasks: 15,
+        enableZombies: true, enableArchers: true, initialArchers: 18, goodTaskTime: 20
       }
     };
 
@@ -203,6 +227,12 @@
       spikeMin: 15,
       spikeMax: 45,
       difficultyKey: null,
+      enableZombies: true,
+      enableArchers: true,
+      initialArchers: 14,
+      goodTaskTime: 20,
+      pendingRestart: false,
+      pendingRestartTimer: 0,
       over: false,
       win: false,
       showMap: false,
@@ -275,6 +305,10 @@
       state.spikesEnabled = d.spikesEnabled;
       state.spikeMin = d.spikeMin;
       state.spikeMax = d.spikeMax;
+      state.enableZombies = d.enableZombies;
+      state.enableArchers = d.enableArchers;
+      state.initialArchers = d.initialArchers;
+      state.goodTaskTime = d.goodTaskTime;
     }
 
     function texturedRect(x, y, w, h, base, line, step = 8) {
@@ -318,23 +352,27 @@
       state.bullets = [];
       state.enemyBullets = [];
       state.enemies = [];
-      for (let i = 0; i < 14; i++) {
-        const p = randomFreePosition(16);
-        state.enemies.push({
-          x: p.x,
-          y: p.y,
-          r: 16,
-          hp: 45,
-          cd: 0,
-          vx: 0,
-          vy: 0
-        });
+      if (state.enableArchers) {
+        for (let i = 0; i < state.initialArchers; i++) {
+          const p = randomFreePosition(16);
+          state.enemies.push({
+            x: p.x,
+            y: p.y,
+            r: 16,
+            hp: 45,
+            cd: 0,
+            vx: 0,
+            vy: 0
+          });
+        }
       }
 
       const initialZombies = DIFFICULTIES[state.difficultyKey || "normal"].initialZombies;
       state.zombies = [];
-      for (let i = 0; i < initialZombies; i++) {
-        spawnZombie(true);
+      if (state.enableZombies) {
+        for (let i = 0; i < initialZombies; i++) {
+          spawnZombie(true);
+        }
       }
 
       state.tasks = [];
@@ -378,6 +416,8 @@
       state.over = false;
       state.win = false;
       state.frame = 0;
+      state.pendingRestart = false;
+      state.pendingRestartTimer = 0;
       state.msg = "Виконуй завдання, виживай і викривай імпосторів.";
       const p = randomFreePosition(player.r);
       player.x = p.x;
@@ -467,10 +507,12 @@
         }
       }
 
-      state.zombieSpawnTimer -= dt;
-      if (state.zombieSpawnTimer <= 0) {
-        spawnZombie();
-        state.zombieSpawnTimer = state.zombieSpawnEvery;
+      if (state.enableZombies) {
+        state.zombieSpawnTimer -= dt;
+        if (state.zombieSpawnTimer <= 0) {
+          spawnZombie();
+          state.zombieSpawnTimer = state.zombieSpawnEvery;
+        }
       }
 
       for (const z of state.zombies) {
@@ -534,7 +576,7 @@
           const nearTask = dist(c.x, c.y, targetTask.x, targetTask.y) < 24;
           if (nearTask) c.workTimer += dt;
           else c.workTimer = 0;
-          if (c.workTimer >= 20) {
+          if (c.workTimer >= state.goodTaskTime) {
             targetTask.done = true;
             state.taskDone++;
             state.score += 30;
@@ -562,14 +604,22 @@
         b.y += b.vy;
         b.life -= 1;
       }
-      state.bullets = state.bullets.filter((b) => b.life > 0 && b.x >= 0 && b.y >= 0 && b.x <= world.arenaW && b.y <= world.arenaH);
+      state.bullets = state.bullets.filter((b) =>
+        b.life > 0 &&
+        b.x >= 0 && b.y >= 0 && b.x <= world.arenaW && b.y <= world.arenaH &&
+        !blocks.some((blk) => circleRectCollision(b.x, b.y, 2, blk))
+      );
 
       for (const b of state.enemyBullets) {
         b.x += b.vx;
         b.y += b.vy;
         b.life -= 1;
       }
-      state.enemyBullets = state.enemyBullets.filter((b) => b.life > 0 && b.x >= 0 && b.y >= 0 && b.x <= world.arenaW && b.y <= world.arenaH);
+      state.enemyBullets = state.enemyBullets.filter((b) =>
+        b.life > 0 &&
+        b.x >= 0 && b.y >= 0 && b.x <= world.arenaW && b.y <= world.arenaH &&
+        !blocks.some((blk) => circleRectCollision(b.x, b.y, 2, blk))
+      );
 
       for (const b of state.bullets) {
         for (const e of state.enemies) {
@@ -686,6 +736,12 @@
       if (!state.difficultyKey) return;
       if (state.over) return;
       state.frame++;
+      if (state.pendingRestart) {
+        state.pendingRestartTimer -= dt;
+        if (state.pendingRestartTimer <= 0) {
+          state.pendingRestart = false;
+        }
+      }
 
       let mx = 0;
       let my = 0;
@@ -931,7 +987,7 @@
 
       ctx.fillStyle = "#d7defa";
       ctx.font = "14px Inter, Arial";
-      ctx.fillText("Карта 100×100 (M щоб закрити)", x + 12, y + 20);
+      ctx.fillText(`Карта ${world.tilesX}×${world.tilesY} (M щоб закрити)`, x + 12, y + 20);
     }
 
     function draw() {
@@ -967,15 +1023,73 @@
         state.showMap = !state.showMap;
       }
 
-      if (e.code === "KeyR" && !e.repeat) resetGame();
+      if (e.code === "KeyR" && !e.repeat) {
+        state.pendingRestart = true;
+        state.pendingRestartTimer = 4;
+        state.msg = "Для рестарту натисни T протягом 4 секунд.";
+      }
+      if (e.code === "KeyT" && !e.repeat && state.pendingRestart) {
+        resetGame();
+      }
     });
 
     window.addEventListener("keyup", (e) => {
       state.keys[e.code] = false;
     });
 
-    document.querySelectorAll(".difficulty-btn").forEach((btn) => {
+    const customPanel = document.getElementById("customPanel");
+    const customIds = ["hp","tasks","map","zombie_init","zombie_spawn","archer_init","good","good_time","imp","spikes_every"];
+    customIds.forEach((id) => {
+      const input = document.getElementById(`c_${id}`);
+      const out = document.getElementById(`v_${id}`);
+      if (input && out) {
+        out.textContent = input.value;
+        input.addEventListener("input", () => { out.textContent = input.value; });
+      }
+    });
+
+    function buildCustomDifficulty() {
+      const zombieOn = document.getElementById("c_zombie_on").checked;
+      const archerOn = document.getElementById("c_archer_on").checked;
+      const spikesOn = document.getElementById("c_spikes_on").checked;
+      const good = Number(document.getElementById("c_good").value);
+      const imp = Number(document.getElementById("c_imp").value);
+      const totalCrew = good + imp;
+      DIFFICULTIES.custom = {
+        hp: Number(document.getElementById("c_hp").value),
+        tiles: Number(document.getElementById("c_map").value),
+        showChars: document.getElementById("c_show_roles").checked ? "all" : "knownRoles",
+        enemyDamage: 8,
+        zombieDamage: 10,
+        spikeMin: Number(document.getElementById("c_spikes_every").value),
+        spikeMax: Number(document.getElementById("c_spikes_every").value),
+        spikesEnabled: spikesOn,
+        crewCount: totalCrew,
+        goodCrew: good,
+        impostors: imp,
+        initialZombies: zombieOn ? Number(document.getElementById("c_zombie_init").value) : 0,
+        zombieSpawnEvery: Number(document.getElementById("c_zombie_spawn").value),
+        tasks: Number(document.getElementById("c_tasks").value),
+        enableZombies: zombieOn,
+        enableArchers: archerOn,
+        initialArchers: Number(document.getElementById("c_archer_init").value),
+        goodTaskTime: Number(document.getElementById("c_good_time").value)
+      };
+    }
+
+    document.getElementById("startCustomBtn").addEventListener("click", () => {
+      buildCustomDifficulty();
+      applyDifficulty("custom");
+      difficultyModal.style.display = "none";
+      resetGame();
+    });
+
+    document.querySelectorAll(".difficulty-grid .difficulty-btn").forEach((btn) => {
       btn.addEventListener("click", () => {
+        if (btn.dataset.difficulty === "custom") {
+          customPanel.style.display = customPanel.style.display === "none" ? "block" : "none";
+          return;
+        }
         applyDifficulty(btn.dataset.difficulty);
         difficultyModal.style.display = "none";
         resetGame();
