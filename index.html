@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MegaFuse: BrawlCraft Dash Impostor</title>
+  <style>
+    :root {
+      --bg: #0f1226;
+      --panel: #181c3b;
+      --accent: #5be7a9;
+      --danger: #ff5f7a;
+      --text: #eef2ff;
+      --muted: #9aa2d3;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Inter, Arial, sans-serif;
+      background: radial-gradient(circle at top, #1f2560, var(--bg));
+      color: var(--text);
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 12px;
+    }
+    .game-wrap {
+      width: min(1000px, 100%);
+      display: grid;
+      gap: 12px;
+    }
+    .hud {
+      background: rgba(24, 28, 59, 0.95);
+      border: 1px solid #2f3773;
+      border-radius: 12px;
+      padding: 10px 12px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .stats {
+      display: flex;
+      gap: 14px;
+      flex-wrap: wrap;
+      font-size: 14px;
+    }
+    .stats b { color: var(--accent); }
+    #message { color: #ffd56d; min-height: 1.2em; font-size: 14px; }
+    #game {
+      width: 100%;
+      height: auto;
+      background: #070a1b;
+      border: 2px solid #2f3773;
+      border-radius: 14px;
+      image-rendering: pixelated;
+      display: block;
+    }
+    .controls {
+      background: rgba(24, 28, 59, 0.95);
+      border: 1px solid #2f3773;
+      border-radius: 12px;
+      padding: 10px 12px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    .controls kbd {
+      border: 1px solid #5b65b4;
+      border-bottom-width: 2px;
+      border-radius: 6px;
+      padding: 0 6px;
+      background: #1c2250;
+      color: var(--text);
+    }
+  </style>
+</head>
+<body>
+  <div class="game-wrap">
+    <div class="hud">
+      <div class="stats">
+        <span>❤️ HP: <b id="hp"></b></span>
+        <span>⭐ Очки: <b id="score"></b></span>
+        <span>🔧 Завдання: <b id="tasks"></b></span>
+        <span>👾 Імпосторів знайдено: <b id="found"></b></span>
+      </div>
+      <div id="message"></div>
+    </div>
+    <canvas id="game" width="960" height="540"></canvas>
+    <div class="controls">
+      Змішана гра (Brawl Stars + Minecraft + Geometry Dash + Among Us).<br />
+      Рух: <kbd>WASD</kbd> або <kbd>←↑→↓</kbd> • Постріл: <kbd>Space</kbd> • Взаємодія із завданням/сканом: <kbd>E</kbd> • Рестарт: <kbd>R</kbd>.<br />
+      Ліворуч — аренка з блоками й ворогами (Brawl + Minecraft). Праворуч — авторанер-платформа (Geometry Dash). Роби завдання та знаходь імпосторів (Among Us).
+    </div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById("game");
+    const ctx = canvas.getContext("2d");
+    const ui = {
+      hp: document.getElementById("hp"),
+      score: document.getElementById("score"),
+      tasks: document.getElementById("tasks"),
+      found: document.getElementById("found"),
+      message: document.getElementById("message"),
+    };
+
+    const world = {
+      w: canvas.width,
+      h: canvas.height,
+      arenaW: 610,
+      dashX: 620,
+    };
+
+    const state = {
+      keys: {},
+      bullets: [],
+      enemyBullets: [],
+      enemies: [],
+      tasks: [],
+      crew: [],
+      dashObstacles: [],
+      dashSpeed: 4.8,
+      score: 0,
+      hp: 100,
+      taskDone: 0,
+      impostorsFound: 0,
+      totalTasks: 3,
+      totalImpostors: 2,
+      over: false,
+      win: false,
+      msg: "Виконай завдання і вистеж імпосторів!",
+      time: 0,
+    };
+
+    const player = {
+      x: 120, y: 180, r: 16, speed: 2.8, fireCooldown: 0,
+      dirX: 1, dirY: 0,
+      dash: { y: 420, w: 28, h: 28, vy: 0, onGround: true }
+    };
+
+    const blocks = [
+      {x: 60, y: 70, w: 80, h: 80},
+      {x: 220, y: 110, w: 90, h: 70},
+      {x: 390, y: 50, w: 110, h: 100},
+      {x: 500, y: 220, w: 90, h: 90},
+      {x: 130, y: 300, w: 120, h: 90},
+      {x: 320, y: 280, w: 120, h: 70},
+    ];
+
+    function reset() {
+      state.bullets = [];
+      state.enemyBullets = [];
+      state.enemies = [
+        {x: 540, y: 120, r: 15, hp: 35, cd: 0},
+        {x: 500, y: 390, r: 15, hp: 35, cd: 0},
+        {x: 350, y: 190, r: 15, hp: 35, cd: 0},
+      ];
+      state.tasks = [
+        {x: 95, y: 430, done: false},
+        {x: 450, y: 430, done: false},
+        {x: 565, y: 60, done: false},
+      ];
+      state.crew = [
+        {x: 270, y: 420, impostor: true, scanned: false},
+        {x: 550, y: 350, impostor: false, scanned: false},
+        {x: 70, y: 180, impostor: false, scanned: false},
+        {x: 430, y: 170, impostor: true, scanned: false},
+      ];
+      state.dashObstacles = [];
+      for (let i = 0; i < 8; i++) {
+        state.dashObstacles.push({
+          x: world.w + i * 170,
+          y: 460,
+          w: 24 + (i % 3) * 8,
+          h: 40 + (i % 2) * 18
+        });
+      }
+      state.score = 0;
+      state.hp = 100;
+      state.taskDone = 0;
+      state.impostorsFound = 0;
+      state.over = false;
+      state.win = false;
+      state.msg = "Виконай завдання і вистеж імпосторів!";
+      state.time = 0;
+      player.x = 120; player.y = 180;
+      player.fireCooldown = 0; player.dirX = 1; player.dirY = 0;
+      player.dash.y = 420; player.dash.vy = 0; player.dash.onGround = true;
+      updateHud();
+    }
+
+    function updateHud() {
+      ui.hp.textContent = state.hp;
+      ui.score.textContent = state.score;
+      ui.tasks.textContent = `${state.taskDone}/${state.totalTasks}`;
+      ui.found.textContent = `${state.impostorsFound}/${state.totalImpostors}`;
+      ui.message.textContent = state.msg;
+    }
+
+    function circleRectCollision(cx, cy, r, rect) {
+      const testX = Math.max(rect.x, Math.min(cx, rect.x + rect.w));
+      const testY = Math.max(rect.y, Math.min(cy, rect.y + rect.h));
+      const dx = cx - testX, dy = cy - testY;
+      return dx * dx + dy * dy <= r * r;
+    }
+
+    function canMoveTo(nx, ny) {
+      if (nx - player.r < 0 || nx + player.r > world.arenaW || ny - player.r < 0 || ny + player.r > world.h) return false;
+      for (const b of blocks) if (circleRectCollision(nx, ny, player.r, b)) return false;
+      return true;
+    }
+
+    function update() {
+      if (state.over) return;
+      state.time++;
+      state.score += 0.05;
+
+      let mx = 0, my = 0;
+      if (state.keys["ArrowLeft"] || state.keys["a"]) mx -= 1;
+      if (state.keys["ArrowRight"] || state.keys["d"]) mx += 1;
+      if (state.keys["ArrowUp"] || state.keys["w"]) my -= 1;
+      if (state.keys["ArrowDown"] || state.keys["s"]) my += 1;
+      if (mx || my) {
+        const len = Math.hypot(mx, my) || 1;
+        mx /= len; my /= len;
+        player.dirX = mx; player.dirY = my;
+      }
+      const nx = player.x + mx * player.speed;
+      const ny = player.y + my * player.speed;
+      if (canMoveTo(nx, player.y)) player.x = nx;
+      if (canMoveTo(player.x, ny)) player.y = ny;
+
+      if (player.fireCooldown > 0) player.fireCooldown--;
+      if (state.keys[" "] && player.fireCooldown <= 0) {
+        state.bullets.push({x: player.x, y: player.y, vx: player.dirX * 6, vy: player.dirY * 6, life: 60});
+        player.fireCooldown = 18;
+      }
+
+      for (const b of state.bullets) { b.x += b.vx; b.y += b.vy; b.life--; }
+      state.bullets = state.bullets.filter(b => b.life > 0 && b.x > 0 && b.x < world.arenaW && b.y > 0 && b.y < world.h);
+
+      for (const e of state.enemies) {
+        if (e.hp <= 0) continue;
+        const dx = player.x - e.x, dy = player.y - e.y;
+        const dist = Math.hypot(dx, dy) || 1;
+        const step = 1.0;
+        const ex = e.x + (dx / dist) * step;
+        const ey = e.y + (dy / dist) * step;
+        if (!blocks.some(b => circleRectCollision(ex, ey, e.r, b))) { e.x = ex; e.y = ey; }
+        if (e.cd > 0) e.cd--;
+        if (e.cd <= 0 && dist < 280) {
+          state.enemyBullets.push({x: e.x, y: e.y, vx: (dx / dist) * 3.8, vy: (dy / dist) * 3.8, life: 90});
+          e.cd = 55 + Math.random() * 25;
+        }
+      }
+
+      for (const eb of state.enemyBullets) { eb.x += eb.vx; eb.y += eb.vy; eb.life--; }
+      state.enemyBullets = state.enemyBullets.filter(b => b.life > 0 && b.x > 0 && b.x < world.arenaW && b.y > 0 && b.y < world.h);
+
+      for (const b of state.bullets) {
+        for (const e of state.enemies) {
+          if (e.hp > 0 && Math.hypot(b.x - e.x, b.y - e.y) < e.r + 3) {
+            e.hp -= 15;
+            b.life = 0;
+            if (e.hp <= 0) state.score += 35;
+          }
+        }
+      }
+
+      for (const eb of state.enemyBullets) {
+        if (Math.hypot(eb.x - player.x, eb.y - player.y) < player.r + 3) {
+          eb.life = 0;
+          state.hp -= 8;
+          state.msg = "Обережно! Тебе підбили.";
+        }
+      }
+
+      if (state.keys["e"]) {
+        for (const t of state.tasks) {
+          if (!t.done && Math.hypot(player.x - t.x, player.y - t.y) < 34) {
+            t.done = true;
+            state.taskDone++;
+            state.score += 45;
+            state.msg = "Завдання виконано!";
+          }
+        }
+        for (const c of state.crew) {
+          if (!c.scanned && Math.hypot(player.x - c.x, player.y - c.y) < 34) {
+            c.scanned = true;
+            if (c.impostor) {
+              state.impostorsFound++;
+              state.msg = "Імпостора викрито!";
+              state.score += 60;
+            } else {
+              state.msg = "Це мирний член екіпажу.";
+            }
+          }
+        }
+      }
+
+      // Geometry Dash lane
+      player.dash.vy += 0.48;
+      player.dash.y += player.dash.vy;
+      const floorY = 448;
+      if (player.dash.y >= floorY - player.dash.h) {
+        player.dash.y = floorY - player.dash.h;
+        player.dash.vy = 0;
+        player.dash.onGround = true;
+      } else player.dash.onGround = false;
+
+      if ((state.keys["ArrowUp"] || state.keys["w"]) && player.dash.onGround) {
+        player.dash.vy = -9.6;
+      }
+
+      for (const o of state.dashObstacles) {
+        o.x -= state.dashSpeed;
+        if (o.x + o.w < world.dashX + 5) {
+          o.x = world.w + Math.random() * 230;
+          o.h = 35 + Math.random() * 55;
+          o.w = 20 + Math.random() * 24;
+          state.score += 12;
+        }
+        const px = world.dashX + 45, py = player.dash.y, pw = player.dash.w, ph = player.dash.h;
+        if (px < o.x + o.w && px + pw > o.x && py < o.y + o.h && py + ph > o.y) {
+          state.hp -= 0.8;
+          state.msg = "Ти зачепив перешкоду в Dash-зоні!";
+        }
+      }
+
+      state.enemies = state.enemies.filter(e => e.hp > 0 || state.time % 2 === 0);
+      if (state.hp <= 0) {
+        state.over = true;
+        state.msg = "Гру завершено. Натисни R для рестарту.";
+      }
+      if (state.taskDone >= state.totalTasks && state.impostorsFound >= state.totalImpostors) {
+        state.win = true;
+        state.over = true;
+        state.msg = "Перемога! Ти закрив місію MegaFuse 🎉 (R — зіграти ще)";
+      }
+      updateHud();
+    }
+
+    function drawGrid() {
+      ctx.strokeStyle = "rgba(255,255,255,0.05)";
+      for (let x = 0; x < world.arenaW; x += 30) {
+        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, world.h); ctx.stroke();
+      }
+      for (let y = 0; y < world.h; y += 30) {
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(world.arenaW, y); ctx.stroke();
+      }
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, world.w, world.h);
+
+      // Arena zone
+      ctx.fillStyle = "#0c1335";
+      ctx.fillRect(0, 0, world.arenaW, world.h);
+      drawGrid();
+
+      // Minecraft-like blocks
+      for (const b of blocks) {
+        ctx.fillStyle = "#5f4b32";
+        ctx.fillRect(b.x, b.y, b.w, b.h);
+        ctx.fillStyle = "#6f8f3b";
+        ctx.fillRect(b.x, b.y, b.w, 12);
+      }
+
+      // Tasks
+      for (const t of state.tasks) {
+        ctx.fillStyle = t.done ? "#3ccf82" : "#ffc857";
+        ctx.fillRect(t.x - 10, t.y - 10, 20, 20);
+      }
+
+      // Crew
+      for (const c of state.crew) {
+        if (c.scanned && c.impostor) ctx.fillStyle = "#ff4d6d";
+        else if (c.scanned) ctx.fillStyle = "#63b3ff";
+        else ctx.fillStyle = "#bfc6f9";
+        ctx.beginPath();
+        ctx.arc(c.x, c.y, 11, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // Player (Brawl-ish)
+      ctx.fillStyle = "#5be7a9";
+      ctx.beginPath();
+      ctx.arc(player.x, player.y, player.r, 0, Math.PI * 2);
+      ctx.fill();
+
+      for (const e of state.enemies) {
+        ctx.fillStyle = "#ff6f91";
+        ctx.beginPath(); ctx.arc(e.x, e.y, e.r, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.fillStyle = "#e6f1ff";
+      for (const b of state.bullets) ctx.fillRect(b.x - 2, b.y - 2, 4, 4);
+      ctx.fillStyle = "#ffa7b8";
+      for (const b of state.enemyBullets) ctx.fillRect(b.x - 2, b.y - 2, 4, 4);
+
+      // Dash zone
+      ctx.fillStyle = "#151038";
+      ctx.fillRect(world.dashX, 0, world.w - world.dashX, world.h);
+      ctx.fillStyle = "#2a245b";
+      ctx.fillRect(world.dashX + 8, 448, world.w - world.dashX - 16, 8);
+
+      ctx.fillStyle = "#7de2ff";
+      ctx.fillRect(world.dashX + 45, player.dash.y, player.dash.w, player.dash.h);
+
+      ctx.fillStyle = "#ff7b54";
+      for (const o of state.dashObstacles) ctx.fillRect(o.x, o.y, o.w, o.h);
+
+      ctx.fillStyle = "#9aa2d3";
+      ctx.font = "13px Inter, Arial";
+      ctx.fillText("Dash-смуга", world.dashX + 12, 20);
+      ctx.fillText("Арена", 14, 20);
+    }
+
+    function loop() {
+      update();
+      draw();
+      requestAnimationFrame(loop);
+    }
+
+    window.addEventListener("keydown", (e) => {
+      const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+      state.keys[key] = true;
+      if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", " "].includes(e.key)) e.preventDefault();
+      if (key === "r") reset();
+    });
+    window.addEventListener("keyup", (e) => {
+      const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+      state.keys[key] = false;
+    });
+
+    reset();
+    loop();
+  </script>
+</body>
+</html>
