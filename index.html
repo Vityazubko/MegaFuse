@@ -164,6 +164,23 @@
       </div>
     </div>
   </div>
+  <div class="difficulty-modal" id="levelBrowser" style="display:none;">
+    <div class="difficulty-box">
+      <b id="browserTitle">Рівні</b>
+      <div id="levelCards" style="max-height:420px; overflow:auto; margin-top:8px;"></div>
+      <div id="levelDetail" style="margin-top:8px; display:none; background:#21295c; padding:8px; border-radius:8px;"></div>
+      <button class="difficulty-btn" id="closeBrowserBtn" style="margin-top:8px;">Закрити</button>
+    </div>
+  </div>
+  <div id="editorTools" style="display:none; position:fixed; top:10px; left:10px; z-index:12; background:#1d2452; border:1px solid #4e59b8; border-radius:10px; padding:8px;">
+    <button class="difficulty-btn" id="toolBlock">Block</button>
+    <button class="difficulty-btn" id="toolSpike">Spike</button>
+    <button class="difficulty-btn" id="toolOrb">Orb</button>
+    <button class="difficulty-btn" id="toolErase">Erase</button>
+    <button class="difficulty-btn" id="saveLevelBtn">Save</button>
+    <button class="difficulty-btn" id="playLevelBtn">Play</button>
+    <button class="difficulty-btn" id="exitEditorBtn">Exit</button>
+  </div>
   <div class="game-wrap">
     <div class="hud">
       <div class="stats">
@@ -178,7 +195,7 @@
     </div>
     <canvas id="game" width="960" height="540"></canvas>
     <div class="controls">
-      <b>Керування:</b> Рух: <kbd>WASD</kbd> • Приціл: <kbd>←↑→↓</kbd> • Стрибок (Dash): <kbd>Space</kbd> • Постріл: <kbd>Q</kbd> • Взаємодія: <kbd>E</kbd> • Карта: <kbd>M</kbd> • Рестарт: <kbd>R</kbd> потім <kbd>T</kbd>.<br />
+      <b>Керування:</b> Рух: <kbd>WASD</kbd> • Приціл: <kbd>←↑→↓</kbd> • Стрибок (Dash): <kbd>Space</kbd> • Постріл: <kbd>Q</kbd> • Взаємодія: <kbd>E</kbd> • Карта: <kbd>V</kbd> • Меню: <kbd>M</kbd> • Рестарт: <kbd>R</kbd> потім <kbd>T</kbd>.<br />
       Величезна арена 100×100, рухома камера, 10 завдань, 8 амонгасів (2 імпостери), хвилі зомбі та Dash-доріжка. Спайки в авторанері з’являються раз на 15-45 секунд (з коротким попередженням).
     </div>
   </div>
@@ -188,6 +205,11 @@
     const ctx = canvas.getContext("2d");
     const difficultyModal = document.getElementById("difficultyModal");
     const mainMenu = document.getElementById("mainMenu");
+    const levelBrowser = document.getElementById("levelBrowser");
+    const levelCards = document.getElementById("levelCards");
+    const levelDetail = document.getElementById("levelDetail");
+    const browserTitle = document.getElementById("browserTitle");
+    const editorTools = document.getElementById("editorTools");
     const authState = document.getElementById("authState");
     const ui = {
       hp: document.getElementById("hp"),
@@ -297,6 +319,7 @@
       spawnTimer: 1.2,
       levelData: null
     };
+    const editor = { name: "", tool: "block", objects: [] };
 
     function clamp(v, a, b) { return Math.max(a, Math.min(v, b)); }
     function rand(min, max) { return Math.random() * (max - min) + min; }
@@ -513,6 +536,15 @@
     }
 
     function updateHud() {
+      if (state.mode === "runner_endless" || state.mode === "runner_level_play") {
+        ui.hp.textContent = Math.max(0, Math.round(runner.hp));
+        ui.score.textContent = Math.round(runner.score);
+        ui.tasks.textContent = "-";
+        ui.found.textContent = "-";
+        ui.zombies.textContent = "-";
+        ui.ammo.textContent = "-";
+        return;
+      }
       ui.hp.textContent = Math.max(0, Math.round(state.hp));
       ui.score.textContent = state.score;
       ui.tasks.textContent = `${state.taskDone}/${state.totalTasks}`;
@@ -779,6 +811,7 @@
 
     function update(dt) {
       if (state.mode === "menu") return;
+      if (state.mode === "runner_editor") return;
       if (state.mode === "runner_endless" || state.mode === "runner_level_play") {
         updateRunner(dt);
         return;
@@ -1044,10 +1077,38 @@
       ctx.clearRect(0, 0, view.w, view.h);
       if (state.mode === "runner_endless" || state.mode === "runner_level_play") {
         drawRunner();
+      } else if (state.mode === "runner_editor") {
+        drawRunnerEditor();
       } else {
         drawArena();
         if (!state.arenaOnly) drawDashLane();
         drawMapOverlay();
+      }
+    }
+
+    function drawRunnerEditor() {
+      ctx.fillStyle = "#12295c";
+      ctx.fillRect(0, 0, view.w, view.h);
+      for (let x = 0; x < view.w; x += 40) {
+        ctx.strokeStyle = "rgba(255,255,255,0.08)";
+        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, view.h); ctx.stroke();
+      }
+      for (let y = 0; y < view.h; y += 40) {
+        ctx.strokeStyle = "rgba(255,255,255,0.08)";
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(view.w, y); ctx.stroke();
+      }
+      ctx.fillStyle = "#2e376f";
+      ctx.fillRect(0, view.h - 65, view.w, 10);
+      for (const o of editor.objects) {
+        const y = view.h - 90 - o.h;
+        if (o.type === "spike") {
+          ctx.fillStyle = "#ff5b59";
+          ctx.beginPath(); ctx.moveTo(o.x, view.h - 90); ctx.lineTo(o.x + o.w / 2, y); ctx.lineTo(o.x + o.w, view.h - 90); ctx.closePath(); ctx.fill();
+        } else if (o.type === "block") {
+          texturedRect(o.x, y, o.w, o.h, "#d06a3f", "#6a2d12", 6);
+        } else {
+          ctx.fillStyle = "#ffd93b"; ctx.beginPath(); ctx.arc(o.x + 12, y + 12, 10, 0, Math.PI * 2); ctx.fill();
+        }
       }
     }
 
@@ -1091,20 +1152,25 @@
         runner.spawnTimer -= dt;
         if (runner.spawnTimer <= 0) {
           const t = ["spike", "block", "orb"][Math.floor(Math.random() * 3)];
-          runner.obstacles.push({ x: view.w + 30, type: t, w: 30, h: t === "block" ? 40 : 30 });
+          const obj = { x: view.w + 30, type: t, w: 30, h: t === "block" ? 40 : 30 };
+          if (t === "spike" && Math.random() < 0.35) {
+            const block = runner.obstacles.find((o) => o.type === "block" && Math.abs(o.x - (view.w + 30)) < 80);
+            if (block) obj.baseY = (view.h - 90 - block.h);
+          }
+          runner.obstacles.push(obj);
           runner.spawnTimer = 0.8 + Math.random() * 1.2;
         }
       }
 
       for (const o of runner.obstacles) {
         o.x -= 5.5;
-        if (o.type === "orb" && Math.abs(o.x - 120) < 18 && Math.abs(runner.y - (view.h - 130)) < 30) {
-          runner.score += 5;
-          o.dead = true;
+        const orbY = (o.baseY ?? (view.h - 90 - o.h));
+        if (o.type === "orb" && Math.abs(o.x - 120) < 22 && Math.abs(runner.y - orbY) < 40) {
+          o.canBoost = true;
         }
         if ((o.type === "spike" || o.type === "block") && !o.dead) {
           const px = 120, py = runner.y, pw = 24, ph = 24;
-          const oy = view.h - 90 - o.h;
+          const oy = (o.baseY ?? (view.h - 90 - o.h));
           if (px < o.x + o.w && px + pw > o.x && py < oy + o.h && py + ph > oy) {
             if (runner.invuln <= 0) {
               runner.hp -= 20;
@@ -1112,6 +1178,12 @@
             }
           }
         }
+      }
+      const activeOrb = runner.obstacles.find((o) => o.type === "orb" && o.canBoost);
+      if (activeOrb && state.keys["Space"]) {
+        runner.vy = -12;
+        activeOrb.dead = true;
+        runner.score += 5;
       }
       runner.obstacles = runner.obstacles.filter((o) => !o.dead && o.x > -80);
       ui.hp.textContent = runner.hp;
@@ -1131,14 +1203,16 @@
       ctx.fillStyle = "#7de2ff";
       ctx.fillRect(120, runner.y, 24, 24);
       for (const o of runner.obstacles) {
-        const y = view.h - 90 - o.h;
+        const y = (o.baseY ?? (view.h - 90 - o.h));
         if (o.type === "spike") {
+          const base = y + o.h;
           ctx.fillStyle = "#ff5b59";
-          ctx.beginPath(); ctx.moveTo(o.x, view.h - 90); ctx.lineTo(o.x + o.w / 2, y); ctx.lineTo(o.x + o.w, view.h - 90); ctx.closePath(); ctx.fill();
+          ctx.beginPath(); ctx.moveTo(o.x, base); ctx.lineTo(o.x + o.w / 2, y); ctx.lineTo(o.x + o.w, base); ctx.closePath(); ctx.fill();
         } else if (o.type === "block") {
           texturedRect(o.x, y, o.w, o.h, "#d06a3f", "#6a2d12", 6);
         } else {
-          ctx.fillStyle = "#66f0d6"; ctx.beginPath(); ctx.arc(o.x + 12, y + 12, 10, 0, Math.PI * 2); ctx.fill();
+          ctx.fillStyle = "#ffd93b"; ctx.beginPath(); ctx.arc(o.x + 12, y + 12, 10, 0, Math.PI * 2); ctx.fill();
+          ctx.strokeStyle = "#8f6d00"; ctx.stroke();
         }
       }
     }
@@ -1171,7 +1245,12 @@
         state.mode = "menu";
         mainMenu.style.display = "grid";
         difficultyModal.style.display = "none";
+        levelBrowser.style.display = "none";
+        editorTools.style.display = "none";
         return;
+      }
+      if (e.code === "KeyV" && !e.repeat && state.mode === "survival") {
+        state.showMap = !state.showMap;
       }
 
       if (e.code === "KeyR" && !e.repeat) {
@@ -1297,47 +1376,128 @@
       if (!d.currentUser) return alert("Спочатку залогінься");
       const name = prompt("Назва рівня:");
       if (!name) return;
-      const raw = prompt("Введи перешкоди у форматі тип:x;тип:x (тип=spike|block|orb), напр. spike:200;block:350");
-      const arr = (raw || "").split(";").map((s) => s.trim()).filter(Boolean).map((item) => {
-        const [type, x] = item.split(":"); return { type, x: Number(x) || 200, w: 30, h: type === "block" ? 40 : 30 };
+      editor.name = name;
+      editor.objects = [];
+      editor.tool = "block";
+      state.mode = "runner_editor";
+      mainMenu.style.display = "none";
+      editorTools.style.display = "block";
+    });
+
+    function openLevelBrowser(type) {
+      const d = loadData();
+      const current = d.currentUser || "guest";
+      const list = type === "mine" ? d.levels.filter((l) => l.author === current) : d.levels.filter((l) => l.published);
+      browserTitle.textContent = type === "mine" ? "Твої рівні" : "Рівні інших";
+      levelCards.innerHTML = "";
+      levelDetail.style.display = "none";
+      list.forEach((lv) => {
+        const card = document.createElement("div");
+        card.style.cssText = "background:#8f542f;color:#fff;border:2px solid #6adf3f;border-radius:10px;padding:8px;margin:6px 0;cursor:pointer;";
+        card.innerHTML = `<b>${lv.name}</b> by ${lv.author}<br/>👁 ${lv.views || 0} 👍 ${lv.likes || 0} 👎 ${lv.dislikes || 0}`;
+        card.onclick = () => showLevelDetail(lv.id, type);
+        levelCards.appendChild(card);
       });
-      d.levels.push({ id: Date.now(), name, author: d.currentUser, data: arr, published: false, views: 0, likes: 0, dislikes: 0, comments: [] });
-      saveData(d); alert("Рівень створено");
-    });
-    document.getElementById("btnMyLevels").addEventListener("click", () => {
+      mainMenu.style.display = "none";
+      levelBrowser.style.display = "grid";
+    }
+
+    function showLevelDetail(levelId, type) {
       const d = loadData();
-      if (!d.currentUser) return alert("Спочатку залогінься");
-      const mine = d.levels.filter((l) => l.author === d.currentUser);
-      if (mine.length === 0) return alert("Немає рівнів");
-      const list = mine.map((l, i) => `${i + 1}. ${l.name} ${l.published ? "(опублік.)" : ""}`).join("\n");
-      const idx = Number(prompt(`${list}\nОбери номер (0=скасувати)`)) - 1;
-      if (idx < 0 || idx >= mine.length) return;
-      const lv = mine[idx];
-      const action = prompt("1=Грати 2=Опублікувати");
-      if (action === "1") startRunnerEndless(lv.data);
-      if (action === "2") { lv.published = true; saveData(d); alert("Опубліковано"); }
-    });
-    document.getElementById("btnOtherLevels").addEventListener("click", () => {
-      const d = loadData();
-      const list = d.levels.filter((l) => l.published);
-      if (list.length === 0) return alert("Немає опублікованих рівнів");
-      const txt = list.map((l, i) => `${i + 1}. ${l.name} by ${l.author} 👁${l.views} 👍${l.likes} 👎${l.dislikes}`).join("\n");
-      const idx = Number(prompt(`${txt}\nОбери номер`)) - 1;
-      if (idx < 0 || idx >= list.length) return;
-      const lv = list[idx];
-      lv.views++;
-      const act = prompt("1=Грати 2=Лайк 3=Дізлайк 4=Коментар");
-      if (act === "1") startRunnerEndless(lv.data);
-      if (act === "2") lv.likes++;
-      if (act === "3") lv.dislikes++;
-      if (act === "4") {
-        if (!d.currentUser) alert("Лише зареєстровані");
-        else {
-          const text = prompt("Коментар:");
-          if (text) lv.comments.push({ user: d.currentUser, text, likes: 0, dislikes: 0 });
-        }
+      const lv = d.levels.find((x) => x.id === levelId);
+      if (!lv) return;
+      const user = d.currentUser || "guest";
+      lv.viewedBy = lv.viewedBy || [];
+      lv.likedBy = lv.likedBy || [];
+      lv.dislikedBy = lv.dislikedBy || [];
+      if (!lv.viewedBy.includes(user)) {
+        lv.viewedBy.push(user);
+        lv.views = (lv.views || 0) + 1;
       }
       saveData(d);
+      levelDetail.style.display = "block";
+      const comments = (lv.comments || []).map((c, i) => `${i + 1}) ${c.user}: ${c.text} 👍${c.likes || 0} 👎${c.dislikes || 0}`).join("<br/>") || "Нема коментарів";
+      levelDetail.innerHTML = `<b>${lv.name}</b> by ${lv.author}<br/>👁 ${lv.views || 0} 👍 ${lv.likes || 0} 👎 ${lv.dislikes || 0}<br/><div style="max-height:120px;overflow:auto;margin-top:6px;">${comments}</div>`;
+      const actions = document.createElement("div");
+      actions.style.marginTop = "8px";
+      actions.innerHTML = `<button class="difficulty-btn" id="playLvBtn">Play</button>
+      <button class="difficulty-btn" id="likeLvBtn">Like</button>
+      <button class="difficulty-btn" id="dislikeLvBtn">Dislike</button>
+      <button class="difficulty-btn" id="commentLvBtn">Comment</button>
+      <button class="difficulty-btn" id="reactCommentBtn">React Comment</button>
+      ${type === "mine" ? '<button class="difficulty-btn" id="publishLvBtn">Publish</button>' : ''}`;
+      levelDetail.appendChild(actions);
+      document.getElementById("playLvBtn").onclick = () => { levelBrowser.style.display = "none"; startRunnerEndless(lv.data); };
+      document.getElementById("likeLvBtn").onclick = () => {
+        if (lv.likedBy.includes(user)) return alert("Ти вже лайкнув");
+        lv.likedBy.push(user); lv.likes = (lv.likes || 0) + 1; saveData(d); showLevelDetail(levelId, type);
+      };
+      document.getElementById("dislikeLvBtn").onclick = () => {
+        if (lv.dislikedBy.includes(user)) return alert("Ти вже дізлайкнув");
+        lv.dislikedBy.push(user); lv.dislikes = (lv.dislikes || 0) + 1; saveData(d); showLevelDetail(levelId, type);
+      };
+      document.getElementById("commentLvBtn").onclick = () => {
+        if (!d.currentUser) return alert("Потрібен акаунт");
+        const text = prompt("Коментар:");
+        if (!text) return;
+        lv.comments = lv.comments || [];
+        lv.comments.push({ user: d.currentUser, text, likes: 0, dislikes: 0, likedBy: [], dislikedBy: [] });
+        saveData(d); showLevelDetail(levelId, type);
+      };
+      document.getElementById("reactCommentBtn").onclick = () => {
+        if (!d.currentUser) return alert("Потрібен акаунт");
+        if (!lv.comments || lv.comments.length === 0) return alert("Нема коментарів");
+        const list = lv.comments.map((c, i) => `${i + 1}. ${c.user}: ${c.text}`).join("\n");
+        const idx = Number(prompt(`${list}\nНомер коментаря:`)) - 1;
+        if (idx < 0 || idx >= lv.comments.length) return;
+        const c = lv.comments[idx];
+        c.likedBy = c.likedBy || []; c.dislikedBy = c.dislikedBy || [];
+        const act = prompt("1=Like 2=Dislike");
+        if (act === "1") { if (c.likedBy.includes(d.currentUser)) return alert("Вже лайкнув"); c.likedBy.push(d.currentUser); c.likes = (c.likes || 0) + 1; }
+        if (act === "2") { if (c.dislikedBy.includes(d.currentUser)) return alert("Вже дізлайкнув"); c.dislikedBy.push(d.currentUser); c.dislikes = (c.dislikes || 0) + 1; }
+        saveData(d); showLevelDetail(levelId, type);
+      };
+      const pubBtn = document.getElementById("publishLvBtn");
+      if (pubBtn) pubBtn.onclick = () => { lv.published = true; saveData(d); showLevelDetail(levelId, type); };
+    }
+
+    document.getElementById("btnMyLevels").addEventListener("click", () => {
+      const d = loadData(); if (!d.currentUser) return alert("Спочатку залогінься");
+      openLevelBrowser("mine");
+    });
+    document.getElementById("btnOtherLevels").addEventListener("click", () => openLevelBrowser("other"));
+    document.getElementById("closeBrowserBtn").addEventListener("click", () => {
+      levelBrowser.style.display = "none";
+      mainMenu.style.display = "grid";
+    });
+
+    document.getElementById("toolBlock").onclick = () => editor.tool = "block";
+    document.getElementById("toolSpike").onclick = () => editor.tool = "spike";
+    document.getElementById("toolOrb").onclick = () => editor.tool = "orb";
+    document.getElementById("toolErase").onclick = () => editor.tool = "erase";
+    document.getElementById("exitEditorBtn").onclick = () => {
+      state.mode = "menu";
+      editorTools.style.display = "none";
+      mainMenu.style.display = "grid";
+    };
+    document.getElementById("saveLevelBtn").onclick = () => {
+      const d = loadData();
+      if (!d.currentUser) return alert("Потрібен логін");
+      d.levels.push({ id: Date.now(), name: editor.name || "My Level", author: d.currentUser, data: editor.objects, published: false, views: 0, likes: 0, dislikes: 0, comments: [], likedBy: [], dislikedBy: [], viewedBy: [] });
+      saveData(d); alert("Збережено");
+    };
+    document.getElementById("playLevelBtn").onclick = () => startRunnerEndless(editor.objects);
+
+    canvas.addEventListener("click", (e) => {
+      if (state.mode !== "runner_editor") return;
+      const rect = canvas.getBoundingClientRect();
+      const x = ((e.clientX - rect.left) / rect.width) * view.w;
+      const sx = Math.floor(x / 20) * 20;
+      if (editor.tool === "erase") {
+        editor.objects = editor.objects.filter((o) => Math.abs(o.x - sx) > 16);
+        return;
+      }
+      editor.objects.push({ x: sx, type: editor.tool, w: 30, h: editor.tool === "block" ? 40 : 30 });
     });
 
     state.msg = "Спочатку обери складність.";
