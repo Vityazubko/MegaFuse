@@ -109,7 +109,7 @@
   </style>
 </head>
 <body>
-  <div class="difficulty-modal" id="difficultyModal">
+  <div class="difficulty-modal" id="difficultyModal" style="display:none;">
     <div class="difficulty-box">
       <b>Обери складність перед початком</b>
       <div class="difficulty-grid">
@@ -125,18 +125,42 @@
         Карта <input id="c_map" type="range" min="50" max="200" value="100"/> <span id="v_map">100</span><br/><br/>
         <b>Моби</b><br/>
         <label><input id="c_zombie_on" type="checkbox" checked/> Зомбі</label>
-        Початок <input id="c_zombie_init" type="range" min="0" max="50" value="10"/> <span id="v_zombie_init">10</span>,
-        Спавн сек <input id="c_zombie_spawn" type="range" min="1" max="60" value="20"/> <span id="v_zombie_spawn">20</span><br/>
+        <span id="zombieExtra">
+          Початок <input id="c_zombie_init" type="range" min="0" max="50" value="10"/> <span id="v_zombie_init">10</span>,
+          Спавн сек <input id="c_zombie_spawn" type="range" min="1" max="60" value="20"/> <span id="v_zombie_spawn">20</span>,
+          Шкода <input id="c_zombie_dmg" type="range" min="1" max="50" value="10"/> <span id="v_zombie_dmg">10</span>
+        </span><br/>
         <label><input id="c_archer_on" type="checkbox" checked/> Лучники</label>
-        Початок <input id="c_archer_init" type="range" min="1" max="50" value="14"/> <span id="v_archer_init">14</span><br/>
+        <span id="archerExtra">
+          Початок <input id="c_archer_init" type="range" min="1" max="50" value="14"/> <span id="v_archer_init">14</span>,
+          Шкода <input id="c_archer_dmg" type="range" min="1" max="50" value="8"/> <span id="v_archer_dmg">8</span>
+        </span><br/>
         Добрий амонгас <input id="c_good" type="range" min="0" max="15" value="6"/> <span id="v_good">6</span>,
         Час задачі <input id="c_good_time" type="range" min="1" max="45" value="20"/> <span id="v_good_time">20</span><br/>
-        Імпостер <input id="c_imp" type="range" min="0" max="3" value="2"/> <span id="v_imp">2</span><br/><br/>
+        Імпостер <input id="c_imp" type="range" min="0" max="3" value="2"/> <span id="v_imp">2</span>,
+        Шкода <input id="c_imp_dmg" type="range" min="1" max="50" value="10"/> <span id="v_imp_dmg">10</span><br/><br/>
         <b>Додатково</b><br/>
         <label><input id="c_spikes_on" type="checkbox" checked/> Спавнити спайки</label>
-        Кожні <input id="c_spikes_every" type="range" min="7" max="60" value="20"/> <span id="v_spikes_every">20</span> сек<br/>
+        <span id="spikeExtra">Кожні <input id="c_spikes_every" type="range" min="7" max="60" value="20"/> <span id="v_spikes_every">20</span> сек</span><br/>
+        <label><input id="c_arena_only" type="checkbox"/> Лише Арена</label><br/>
         <label><input id="c_show_roles" type="checkbox"/> Зразу показувати роль амонгаса</label><br/>
         <button id="startCustomBtn" class="difficulty-btn" style="margin-top:8px;">Старт Кастомної</button>
+      </div>
+    </div>
+  </div>
+  <div class="difficulty-modal" id="mainMenu" style="display:grid;">
+    <div class="difficulty-box">
+      <b>MegaFuse Меню</b>
+      <div id="authState" style="margin:8px 0; color:#bfc8ff;">Не залогінено</div>
+      <div class="difficulty-grid">
+        <button class="difficulty-btn" id="btnRegister">Реєстрація</button>
+        <button class="difficulty-btn" id="btnLogin">Логін</button>
+        <button class="difficulty-btn" id="btnLogout">Вийти</button>
+        <button class="difficulty-btn" id="btnSurvival">Виживання</button>
+        <button class="difficulty-btn" id="btnRunnerEndless">Ранер: Безкінечний</button>
+        <button class="difficulty-btn" id="btnRunnerCreator">Ранер: Створити рівень</button>
+        <button class="difficulty-btn" id="btnMyLevels">Свої рівні</button>
+        <button class="difficulty-btn" id="btnOtherLevels">Рівні інших</button>
       </div>
     </div>
   </div>
@@ -163,6 +187,8 @@
     const canvas = document.getElementById("game");
     const ctx = canvas.getContext("2d");
     const difficultyModal = document.getElementById("difficultyModal");
+    const mainMenu = document.getElementById("mainMenu");
+    const authState = document.getElementById("authState");
     const ui = {
       hp: document.getElementById("hp"),
       score: document.getElementById("score"),
@@ -181,19 +207,19 @@
         hp: 250, tiles: 75, showChars: "all", enemyDamage: 6, zombieDamage: 8,
         spikeMin: 999999, spikeMax: 999999, spikesEnabled: false,
         crewCount: 6, impostors: 1, goodCrew: 5, initialZombies: 0, zombieSpawnEvery: 30, tasks: 5,
-        enableZombies: true, enableArchers: true, initialArchers: 14, goodTaskTime: 20
+        enableZombies: true, enableArchers: true, initialArchers: 14, goodTaskTime: 20, impostorDamage: 10, arenaOnly: false
       },
       normal: {
         hp: 200, tiles: 100, showChars: "knownRoles", enemyDamage: 8, zombieDamage: 10,
         spikeMin: 15, spikeMax: 45, spikesEnabled: true,
         crewCount: 8, impostors: 2, goodCrew: 6, initialZombies: 10, zombieSpawnEvery: 20, tasks: 10,
-        enableZombies: true, enableArchers: true, initialArchers: 14, goodTaskTime: 20
+        enableZombies: true, enableArchers: true, initialArchers: 14, goodTaskTime: 20, impostorDamage: 10, arenaOnly: false
       },
       hard: {
         hp: 150, tiles: 150, showChars: "none", enemyDamage: 12, zombieDamage: 15,
         spikeMin: 10, spikeMax: 15, spikesEnabled: true,
         crewCount: 10, impostors: 4, goodCrew: 6, initialZombies: 15, zombieSpawnEvery: 15, tasks: 15,
-        enableZombies: true, enableArchers: true, initialArchers: 18, goodTaskTime: 20
+        enableZombies: true, enableArchers: true, initialArchers: 18, goodTaskTime: 20, impostorDamage: 10, arenaOnly: false
       }
     };
 
@@ -231,6 +257,9 @@
       enableArchers: true,
       initialArchers: 14,
       goodTaskTime: 20,
+      impostorDamage: 10,
+      arenaOnly: false,
+      mode: "menu",
       pendingRestart: false,
       pendingRestartTimer: 0,
       over: false,
@@ -254,6 +283,19 @@
       reloading: false,
       reloadTimer: 0,
       dash: { y: 430, w: 28, h: 28, vy: 0, onGround: true }
+    };
+
+    const runner = {
+      hp: 100,
+      score: 0,
+      invuln: 0,
+      scoreTick: 0,
+      y: 420,
+      vy: 0,
+      onGround: true,
+      obstacles: [],
+      spawnTimer: 1.2,
+      levelData: null
     };
 
     function clamp(v, a, b) { return Math.max(a, Math.min(v, b)); }
@@ -309,6 +351,8 @@
       state.enableArchers = d.enableArchers;
       state.initialArchers = d.initialArchers;
       state.goodTaskTime = d.goodTaskTime;
+      state.impostorDamage = d.impostorDamage ?? 10;
+      state.arenaOnly = !!d.arenaOnly;
     }
 
     function texturedRect(x, y, w, h, base, line, step = 8) {
@@ -437,6 +481,7 @@
 
     function resetGame() {
       state.tutorial = { active: false };
+      state.mode = "survival";
       resetWorld();
     }
 
@@ -588,7 +633,7 @@
 
         if (c.chasing && dist(c.x, c.y, player.x, player.y) < 24) {
           if (c.touchDamageCooldown <= 0) {
-            state.hp -= 10;
+            state.hp -= state.impostorDamage;
             c.touchDamageCooldown = 2;
           }
         }
@@ -733,6 +778,11 @@
     }
 
     function update(dt) {
+      if (state.mode === "menu") return;
+      if (state.mode === "runner_endless" || state.mode === "runner_level_play") {
+        updateRunner(dt);
+        return;
+      }
       if (!state.difficultyKey) return;
       if (state.over) return;
       state.frame++;
@@ -992,9 +1042,105 @@
 
     function draw() {
       ctx.clearRect(0, 0, view.w, view.h);
-      drawArena();
-      drawDashLane();
-      drawMapOverlay();
+      if (state.mode === "runner_endless" || state.mode === "runner_level_play") {
+        drawRunner();
+      } else {
+        drawArena();
+        if (!state.arenaOnly) drawDashLane();
+        drawMapOverlay();
+      }
+    }
+
+    function startRunnerEndless(levelData = null) {
+      state.mode = levelData ? "runner_level_play" : "runner_endless";
+      runner.hp = 100;
+      runner.score = 0;
+      runner.invuln = 0;
+      runner.scoreTick = 0;
+      runner.y = 420;
+      runner.vy = 0;
+      runner.onGround = true;
+      runner.levelData = levelData;
+      runner.obstacles = [];
+      if (levelData) {
+        for (const o of levelData) runner.obstacles.push({ ...o, x: o.x + view.w });
+      }
+      runner.spawnTimer = 1.2;
+      mainMenu.style.display = "none";
+      difficultyModal.style.display = "none";
+      state.msg = "Runner mode!";
+    }
+
+    function updateRunner(dt) {
+      runner.invuln = Math.max(0, runner.invuln - dt);
+      runner.scoreTick += dt;
+      if (runner.scoreTick >= 1) {
+        runner.score += Math.floor(runner.scoreTick);
+        runner.scoreTick = runner.scoreTick % 1;
+      }
+      runner.vy += 0.62;
+      runner.y += runner.vy;
+      const floor = view.h - 90;
+      if (runner.y >= floor) {
+        runner.y = floor;
+        runner.vy = 0;
+        runner.onGround = true;
+      } else runner.onGround = false;
+
+      if (state.mode === "runner_endless") {
+        runner.spawnTimer -= dt;
+        if (runner.spawnTimer <= 0) {
+          const t = ["spike", "block", "orb"][Math.floor(Math.random() * 3)];
+          runner.obstacles.push({ x: view.w + 30, type: t, w: 30, h: t === "block" ? 40 : 30 });
+          runner.spawnTimer = 0.8 + Math.random() * 1.2;
+        }
+      }
+
+      for (const o of runner.obstacles) {
+        o.x -= 5.5;
+        if (o.type === "orb" && Math.abs(o.x - 120) < 18 && Math.abs(runner.y - (view.h - 130)) < 30) {
+          runner.score += 5;
+          o.dead = true;
+        }
+        if ((o.type === "spike" || o.type === "block") && !o.dead) {
+          const px = 120, py = runner.y, pw = 24, ph = 24;
+          const oy = view.h - 90 - o.h;
+          if (px < o.x + o.w && px + pw > o.x && py < oy + o.h && py + ph > oy) {
+            if (runner.invuln <= 0) {
+              runner.hp -= 20;
+              runner.invuln = 5;
+            }
+          }
+        }
+      }
+      runner.obstacles = runner.obstacles.filter((o) => !o.dead && o.x > -80);
+      ui.hp.textContent = runner.hp;
+      ui.score.textContent = runner.score;
+      ui.message.textContent = runner.invuln > 0 ? `Захист ${runner.invuln.toFixed(1)}с` : "Runner";
+      if (runner.hp <= 0) {
+        state.mode = "menu";
+        mainMenu.style.display = "grid";
+      }
+    }
+
+    function drawRunner() {
+      ctx.fillStyle = "#10162f";
+      ctx.fillRect(0, 0, view.w, view.h);
+      ctx.fillStyle = "#2e376f";
+      ctx.fillRect(0, view.h - 65, view.w, 10);
+      ctx.fillStyle = "#7de2ff";
+      ctx.fillRect(120, runner.y, 24, 24);
+      for (const o of runner.obstacles) {
+        const y = view.h - 90 - o.h;
+        if (o.type === "spike") {
+          ctx.fillStyle = "#ff5b59";
+          ctx.beginPath(); ctx.moveTo(o.x, view.h - 90); ctx.lineTo(o.x + o.w / 2, y); ctx.lineTo(o.x + o.w, view.h - 90); ctx.closePath(); ctx.fill();
+        } else if (o.type === "block") {
+          texturedRect(o.x, y, o.w, o.h, "#d06a3f", "#6a2d12", 6);
+        } else {
+          ctx.fillStyle = "#66f0d6"; ctx.beginPath(); ctx.arc(o.x + 12, y + 12, 10, 0, Math.PI * 2); ctx.fill();
+        }
+      }
     }
 
     let lastTs = performance.now();
@@ -1012,7 +1158,9 @@
       if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", " "].includes(e.key)) e.preventDefault();
 
       if (e.code === "Space") {
-        if (player.dash.onGround) {
+        if (state.mode === "runner_endless" || state.mode === "runner_level_play") {
+          if (runner.onGround) runner.vy = -11;
+        } else if (player.dash.onGround) {
           player.dash.vy = -10.4;
         }
       }
@@ -1020,7 +1168,10 @@
       if (e.code === "KeyE" && !e.repeat) tryInteract();
 
       if (e.code === "KeyM" && !e.repeat) {
-        state.showMap = !state.showMap;
+        state.mode = "menu";
+        mainMenu.style.display = "grid";
+        difficultyModal.style.display = "none";
+        return;
       }
 
       if (e.code === "KeyR" && !e.repeat) {
@@ -1038,7 +1189,7 @@
     });
 
     const customPanel = document.getElementById("customPanel");
-    const customIds = ["hp","tasks","map","zombie_init","zombie_spawn","archer_init","good","good_time","imp","spikes_every"];
+    const customIds = ["hp","tasks","map","zombie_init","zombie_spawn","zombie_dmg","archer_init","archer_dmg","good","good_time","imp","imp_dmg","spikes_every"];
     customIds.forEach((id) => {
       const input = document.getElementById(`c_${id}`);
       const out = document.getElementById(`v_${id}`);
@@ -1060,21 +1211,42 @@
         tiles: Number(document.getElementById("c_map").value),
         showChars: document.getElementById("c_show_roles").checked ? "all" : "knownRoles",
         enemyDamage: 8,
-        zombieDamage: 10,
+        zombieDamage: Number(document.getElementById("c_zombie_dmg").value),
         spikeMin: Number(document.getElementById("c_spikes_every").value),
         spikeMax: Number(document.getElementById("c_spikes_every").value),
         spikesEnabled: spikesOn,
         crewCount: totalCrew,
         goodCrew: good,
         impostors: imp,
+        impostorDamage: Number(document.getElementById("c_imp_dmg").value),
         initialZombies: zombieOn ? Number(document.getElementById("c_zombie_init").value) : 0,
         zombieSpawnEvery: Number(document.getElementById("c_zombie_spawn").value),
         tasks: Number(document.getElementById("c_tasks").value),
         enableZombies: zombieOn,
         enableArchers: archerOn,
         initialArchers: Number(document.getElementById("c_archer_init").value),
-        goodTaskTime: Number(document.getElementById("c_good_time").value)
+        goodTaskTime: Number(document.getElementById("c_good_time").value),
+        arenaOnly: document.getElementById("c_arena_only").checked,
+        enemyDamage: Number(document.getElementById("c_archer_dmg").value)
       };
+    }
+
+    function toggleCustomSections() {
+      document.getElementById("zombieExtra").style.display = document.getElementById("c_zombie_on").checked ? "inline" : "none";
+      document.getElementById("archerExtra").style.display = document.getElementById("c_archer_on").checked ? "inline" : "none";
+      document.getElementById("spikeExtra").style.display = document.getElementById("c_spikes_on").checked ? "inline" : "none";
+    }
+    ["c_zombie_on","c_archer_on","c_spikes_on"].forEach((id) => document.getElementById(id).addEventListener("change", toggleCustomSections));
+    toggleCustomSections();
+
+    const STORAGE_KEY = "megafuse_data_v1";
+    function loadData() {
+      return JSON.parse(localStorage.getItem(STORAGE_KEY) || "{\"accounts\":{},\"currentUser\":\"\",\"levels\":[]}");
+    }
+    function saveData(data) { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); }
+    function refreshAuth() {
+      const d = loadData();
+      authState.textContent = d.currentUser ? `Залогінено: ${d.currentUser}` : "Не залогінено";
     }
 
     document.getElementById("startCustomBtn").addEventListener("click", () => {
@@ -1096,8 +1268,81 @@
       });
     });
 
+    document.getElementById("btnSurvival").addEventListener("click", () => {
+      mainMenu.style.display = "none";
+      difficultyModal.style.display = "grid";
+      state.mode = "menu";
+    });
+    document.getElementById("btnRunnerEndless").addEventListener("click", () => startRunnerEndless());
+    document.getElementById("btnRegister").addEventListener("click", () => {
+      const d = loadData();
+      const nick = prompt("Нік:");
+      const pass = prompt("Пароль:");
+      if (!nick || !pass) return;
+      if (d.accounts[nick]) return alert("Такий нік вже є");
+      d.accounts[nick] = pass; d.currentUser = nick; saveData(d); refreshAuth();
+    });
+    document.getElementById("btnLogin").addEventListener("click", () => {
+      const d = loadData();
+      const nick = prompt("Нік:");
+      const pass = prompt("Пароль:");
+      if (d.accounts[nick] && d.accounts[nick] === pass) { d.currentUser = nick; saveData(d); refreshAuth(); }
+      else alert("Невірний логін");
+    });
+    document.getElementById("btnLogout").addEventListener("click", () => {
+      const d = loadData(); d.currentUser = ""; saveData(d); refreshAuth();
+    });
+    document.getElementById("btnRunnerCreator").addEventListener("click", () => {
+      const d = loadData();
+      if (!d.currentUser) return alert("Спочатку залогінься");
+      const name = prompt("Назва рівня:");
+      if (!name) return;
+      const raw = prompt("Введи перешкоди у форматі тип:x;тип:x (тип=spike|block|orb), напр. spike:200;block:350");
+      const arr = (raw || "").split(";").map((s) => s.trim()).filter(Boolean).map((item) => {
+        const [type, x] = item.split(":"); return { type, x: Number(x) || 200, w: 30, h: type === "block" ? 40 : 30 };
+      });
+      d.levels.push({ id: Date.now(), name, author: d.currentUser, data: arr, published: false, views: 0, likes: 0, dislikes: 0, comments: [] });
+      saveData(d); alert("Рівень створено");
+    });
+    document.getElementById("btnMyLevels").addEventListener("click", () => {
+      const d = loadData();
+      if (!d.currentUser) return alert("Спочатку залогінься");
+      const mine = d.levels.filter((l) => l.author === d.currentUser);
+      if (mine.length === 0) return alert("Немає рівнів");
+      const list = mine.map((l, i) => `${i + 1}. ${l.name} ${l.published ? "(опублік.)" : ""}`).join("\n");
+      const idx = Number(prompt(`${list}\nОбери номер (0=скасувати)`)) - 1;
+      if (idx < 0 || idx >= mine.length) return;
+      const lv = mine[idx];
+      const action = prompt("1=Грати 2=Опублікувати");
+      if (action === "1") startRunnerEndless(lv.data);
+      if (action === "2") { lv.published = true; saveData(d); alert("Опубліковано"); }
+    });
+    document.getElementById("btnOtherLevels").addEventListener("click", () => {
+      const d = loadData();
+      const list = d.levels.filter((l) => l.published);
+      if (list.length === 0) return alert("Немає опублікованих рівнів");
+      const txt = list.map((l, i) => `${i + 1}. ${l.name} by ${l.author} 👁${l.views} 👍${l.likes} 👎${l.dislikes}`).join("\n");
+      const idx = Number(prompt(`${txt}\nОбери номер`)) - 1;
+      if (idx < 0 || idx >= list.length) return;
+      const lv = list[idx];
+      lv.views++;
+      const act = prompt("1=Грати 2=Лайк 3=Дізлайк 4=Коментар");
+      if (act === "1") startRunnerEndless(lv.data);
+      if (act === "2") lv.likes++;
+      if (act === "3") lv.dislikes++;
+      if (act === "4") {
+        if (!d.currentUser) alert("Лише зареєстровані");
+        else {
+          const text = prompt("Коментар:");
+          if (text) lv.comments.push({ user: d.currentUser, text, likes: 0, dislikes: 0 });
+        }
+      }
+      saveData(d);
+    });
+
     state.msg = "Спочатку обери складність.";
     updateHud();
+    refreshAuth();
     requestAnimationFrame(loop);
   </script>
 </body>
