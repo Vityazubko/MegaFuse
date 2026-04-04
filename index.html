@@ -91,7 +91,7 @@
     <canvas id="game" width="960" height="540"></canvas>
     <div class="controls">
       <b>Керування:</b> Рух: <kbd>WASD</kbd>/<kbd>←↑→↓</kbd> • Стрибок (Dash): <kbd>Space</kbd> • Постріл: <kbd>Q</kbd> • Взаємодія: <kbd>E</kbd> • Карта: <kbd>M</kbd> • Рестарт: <kbd>R</kbd>.<br />
-      Спочатку пройди туторіал, потім почнеться гра: величезна арена 100×100, рухома камера, 10 завдань, 8 амонгасів (2 імпостери), хвилі зомбі та Dash-доріжка з попередженням про спайки.
+      Величезна арена 100×100, рухома камера, 10 завдань, 8 амонгасів (2 імпостери), хвилі зомбі та Dash-доріжка. Спайки в авторанері з’являються раз на 15-45 секунд (з коротким попередженням).
     </div>
   </div>
 
@@ -127,7 +127,10 @@
       zombies: [],
       tasks: [],
       crew: [],
-      dashEvents: [],
+      dashSpikes: [],
+      nextSpikeTimer: 20,
+      spikeWarningTimer: 0,
+      pendingSpike: false,
       score: 0,
       hp: 200,
       taskDone: 0,
@@ -140,16 +143,7 @@
       showMap: false,
       msg: "",
       frame: 0,
-      tutorial: {
-        active: true,
-        step: 0,
-        doneMove: false,
-        doneShoot: false,
-        doneInteract: false,
-        doneJump: false,
-        doneMap: false,
-        finished: false
-      }
+      tutorial: { active: false }
     };
 
     const player = {
@@ -265,18 +259,10 @@
         });
       }
 
-      state.dashEvents = [];
-      let x = 130;
-      for (let i = 0; i < 10; i++) {
-        state.dashEvents.push({
-          x: x + i * 145,
-          phase: "warn",
-          timer: 85,
-          w: 32,
-          h: 36,
-          hit: false
-        });
-      }
+      state.dashSpikes = [];
+      state.nextSpikeTimer = rand(15, 45);
+      state.spikeWarningTimer = 0;
+      state.pendingSpike = false;
 
       state.score = 0;
       state.hp = 200;
@@ -299,16 +285,7 @@
     }
 
     function resetGame() {
-      state.tutorial = {
-        active: true,
-        step: 0,
-        doneMove: false,
-        doneShoot: false,
-        doneInteract: false,
-        doneJump: false,
-        doneMap: false,
-        finished: false
-      };
+      state.tutorial = { active: false };
       resetWorld();
     }
 
@@ -349,33 +326,6 @@
       ui.found.textContent = `${state.impostorsFound}/${state.totalImpostors}`;
       ui.zombies.textContent = state.zombies.length;
       ui.message.textContent = state.msg;
-    }
-
-    function tutorialText() {
-      const t = state.tutorial;
-      if (t.step === 0) return "Туторіал 1/5: Рухайся WASD/стрілками.";
-      if (t.step === 1) return "Туторіал 2/5: Натисни Q щоб вистрілити.";
-      if (t.step === 2) return "Туторіал 3/5: Підійди до жовтого терміналу і натисни E.";
-      if (t.step === 3) return "Туторіал 4/5: На Dash-доріжці стрибай ПРОБІЛОМ.";
-      if (t.step === 4) return "Туторіал 5/5: Натисни M для карти, потім ще раз M щоб закрити.";
-      return "Туторіал завершено! Успіхів.";
-    }
-
-    function updateTutorial() {
-      const t = state.tutorial;
-      state.msg = tutorialText();
-      if (t.step === 0 && (state.keys["w"] || state.keys["a"] || state.keys["s"] || state.keys["d"] || state.keys["ArrowUp"] || state.keys["ArrowDown"] || state.keys["ArrowLeft"] || state.keys["ArrowRight"])) {
-        t.step = 1;
-      }
-      if (t.step === 1 && t.doneShoot) t.step = 2;
-      if (t.step === 2 && t.doneInteract) t.step = 3;
-      if (t.step === 3 && t.doneJump) t.step = 4;
-      if (t.step === 4 && t.doneMap) {
-        t.step = 5;
-        t.active = false;
-        t.finished = true;
-        state.msg = "Туторіал завершено. Гра почалась!";
-      }
     }
 
     function completeRandomTaskNearCrew(crewMember) {
@@ -511,7 +461,6 @@
           state.taskDone++;
           state.score += 25;
           state.msg = "Завдання виконано.";
-          state.tutorial.doneInteract = true;
         }
       }
 
@@ -532,7 +481,7 @@
       }
     }
 
-    function updateDash() {
+    function updateDash(dt) {
       player.dash.vy += 0.55;
       player.dash.y += player.dash.vy;
       const floorY = view.h - 72;
@@ -544,48 +493,55 @@
         player.dash.onGround = false;
       }
 
-      for (const ev of state.dashEvents) {
-        ev.x -= 5.2;
-        if (ev.phase === "warn") {
-          ev.timer--;
-          if (ev.timer <= 0) {
-            ev.phase = "spike";
-            ev.timer = 75;
-          }
-        } else {
-          ev.timer--;
-          const px = view.w - world.dashLaneWidth + 60;
-          const py = player.dash.y;
-          const pw = player.dash.w;
-          const ph = player.dash.h;
-          const spikeX = ev.x;
-          const spikeY = view.h - 72 - ev.h;
-          if (!ev.hit && px < spikeX + ev.w && px + pw > spikeX && py < spikeY + ev.h && py + ph > spikeY) {
-            state.hp -= 20;
-            ev.hit = true;
-            state.msg = "Ти не стрибнув через спайк: -20 HP";
-          }
-        }
+      state.nextSpikeTimer -= dt;
+      if (!state.pendingSpike && state.nextSpikeTimer <= 1.5) {
+        state.pendingSpike = true;
+        state.spikeWarningTimer = 1.5;
+      }
 
-        if (ev.x < view.w - world.dashLaneWidth - 40) {
-          ev.x = view.w + Math.random() * 340;
-          ev.phase = "warn";
-          ev.timer = 90;
-          ev.w = 24 + Math.random() * 22;
-          ev.h = 30 + Math.random() * 40;
-          ev.hit = false;
-          state.score += 5;
+      if (state.pendingSpike) {
+        state.spikeWarningTimer -= dt;
+        if (state.spikeWarningTimer <= 0) {
+          state.dashSpikes.push({
+            x: view.w + 15,
+            w: 24 + Math.random() * 22,
+            h: 30 + Math.random() * 40,
+            hit: false
+          });
+          state.pendingSpike = false;
+          state.nextSpikeTimer = rand(15, 45);
         }
+      }
+
+      for (const spike of state.dashSpikes) {
+        spike.x -= 5.2;
+        const px = view.w - world.dashLaneWidth + 60;
+        const py = player.dash.y;
+        const pw = player.dash.w;
+        const ph = player.dash.h;
+        const spikeY = view.h - 72 - spike.h;
+        if (!spike.hit && px < spike.x + spike.w && px + pw > spike.x && py < spikeY + spike.h && py + ph > spikeY) {
+          state.hp -= 20;
+          spike.hit = true;
+          state.msg = "Ти не стрибнув через спайк: -20 HP";
+        }
+      }
+
+      state.dashSpikes = state.dashSpikes.filter((spike) => {
+        if (spike.x + spike.w < view.w - world.dashLaneWidth - 40) {
+          state.score += 5;
+          return false;
+        }
+        return true;
+      });
+      if (state.pendingSpike) {
+        state.msg = "Увага! Скоро буде спайк на Dash-доріжці!";
       }
     }
 
-    function update() {
+    function update(dt) {
       if (state.over) return;
       state.frame++;
-
-      if (state.tutorial.active) {
-        updateTutorial();
-      }
 
       let mx = 0;
       let my = 0;
@@ -608,12 +564,11 @@
       if (state.keys["q"] && player.fireCooldown <= 0) {
         state.bullets.push({ x: player.x, y: player.y, vx: player.dirX * 8, vy: player.dirY * 8, life: 80 });
         player.fireCooldown = 12;
-        state.tutorial.doneShoot = true;
       }
 
       updateProjectiles();
       updateArenaEntities();
-      updateDash();
+      updateDash(dt);
 
       updateCamera();
 
@@ -719,34 +674,35 @@
       const py = player.dash.y;
       texturedRect(px, py, player.dash.w, player.dash.h, "#7de2ff", "rgba(10,50,70,0.5)", 6);
 
-      for (const ev of state.dashEvents) {
-        if (ev.phase === "warn") {
-          ctx.fillStyle = "#ffe08a";
+      if (state.pendingSpike) {
+        const warnX = view.w - world.dashLaneWidth + 170;
+        ctx.fillStyle = "#ffe08a";
+        ctx.beginPath();
+        ctx.moveTo(warnX, view.h - 108);
+        ctx.lineTo(warnX - 14, view.h - 82);
+        ctx.lineTo(warnX + 14, view.h - 82);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = "#442";
+        ctx.font = "14px Inter, Arial";
+        ctx.fillText("!", warnX - 4, view.h - 87);
+      }
+
+      for (const spike of state.dashSpikes) {
+        const y = view.h - 72;
+        const x = spike.x;
+        const spikes = Math.max(1, Math.floor(spike.w / 10));
+        for (let i = 0; i < spikes; i++) {
+          const sx = x + i * 10;
+          ctx.fillStyle = "#ff6d59";
           ctx.beginPath();
-          ctx.moveTo(ev.x, view.h - 92);
-          ctx.lineTo(ev.x - 12, view.h - 72);
-          ctx.lineTo(ev.x + 12, view.h - 72);
+          ctx.moveTo(sx, y);
+          ctx.lineTo(sx + 5, y - spike.h);
+          ctx.lineTo(sx + 10, y);
           ctx.closePath();
           ctx.fill();
-          ctx.fillStyle = "#442";
-          ctx.font = "12px Inter, Arial";
-          ctx.fillText("!", ev.x - 3, view.h - 77);
-        } else {
-          const y = view.h - 72;
-          const x = ev.x;
-          const spikes = Math.max(1, Math.floor(ev.w / 10));
-          for (let i = 0; i < spikes; i++) {
-            const sx = x + i * 10;
-            ctx.fillStyle = "#ff6d59";
-            ctx.beginPath();
-            ctx.moveTo(sx, y);
-            ctx.lineTo(sx + 5, y - ev.h);
-            ctx.lineTo(sx + 10, y);
-            ctx.closePath();
-            ctx.fill();
-            ctx.strokeStyle = "#5e1010";
-            ctx.stroke();
-          }
+          ctx.strokeStyle = "#5e1010";
+          ctx.stroke();
         }
       }
 
@@ -795,30 +751,18 @@
       ctx.fillText("Карта 100×100 (M щоб закрити)", x + 12, y + 20);
     }
 
-    function drawTutorialOverlay() {
-      if (!state.tutorial.active) return;
-      ctx.fillStyle = "rgba(0,0,0,0.55)";
-      ctx.fillRect(0, 0, view.w, view.h);
-      ctx.fillStyle = "#eef2ff";
-      ctx.font = "24px Inter, Arial";
-      ctx.fillText("Туторіал", view.w / 2 - 50, 120);
-      ctx.font = "17px Inter, Arial";
-      ctx.fillText(tutorialText(), view.w / 2 - 270, 165);
-      ctx.font = "14px Inter, Arial";
-      ctx.fillStyle = "#a9b3e8";
-      ctx.fillText("Після завершення туторіалу стартує повна гра.", view.w / 2 - 170, 194);
-    }
-
     function draw() {
       ctx.clearRect(0, 0, view.w, view.h);
       drawArena();
       drawDashLane();
       drawMapOverlay();
-      drawTutorialOverlay();
     }
 
-    function loop() {
-      update();
+    let lastTs = performance.now();
+    function loop(ts) {
+      const dt = Math.min(0.05, (ts - lastTs) / 1000);
+      lastTs = ts;
+      update(dt);
       draw();
       requestAnimationFrame(loop);
     }
@@ -832,7 +776,6 @@
       if (key === " ") {
         if (player.dash.onGround) {
           player.dash.vy = -10.4;
-          state.tutorial.doneJump = true;
         }
       }
 
@@ -840,7 +783,6 @@
 
       if (key === "m") {
         state.showMap = !state.showMap;
-        if (state.tutorial.step === 4 && !state.showMap) state.tutorial.doneMap = true;
       }
 
       if (key === "r") resetGame();
@@ -852,7 +794,7 @@
     });
 
     resetGame();
-    loop();
+    requestAnimationFrame(loop);
   </script>
 </body>
 </html>
