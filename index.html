@@ -185,12 +185,12 @@
   <div class="game-wrap">
     <div class="hud">
       <div class="stats">
-        <span>❤️ HP: <b id="hp"></b></span>
-        <span>⭐ Очки: <b id="score"></b></span>
-        <span>🔧 Завдання: <b id="tasks"></b></span>
-        <span>👾 Імпосторів знайдено: <b id="found"></b></span>
-        <span>🧟 Зомбі: <b id="zombies"></b></span>
-        <span>🔫 Набої: <b id="ammo"></b></span>
+        <span id="statHp">❤️ HP: <b id="hp"></b></span>
+        <span id="statScore">⭐ Очки: <b id="score"></b></span>
+        <span id="statTasks">🔧 Завдання: <b id="tasks"></b></span>
+        <span id="statFound">👾 Імпосторів знайдено: <b id="found"></b></span>
+        <span id="statZombies">🧟 Зомбі: <b id="zombies"></b></span>
+        <span id="statAmmo">🔫 Набої: <b id="ammo"></b></span>
       </div>
       <div id="message"></div>
     </div>
@@ -219,7 +219,13 @@
       found: document.getElementById("found"),
       zombies: document.getElementById("zombies"),
       ammo: document.getElementById("ammo"),
-      message: document.getElementById("message")
+      message: document.getElementById("message"),
+      statHp: document.getElementById("statHp"),
+      statScore: document.getElementById("statScore"),
+      statTasks: document.getElementById("statTasks"),
+      statFound: document.getElementById("statFound"),
+      statZombies: document.getElementById("statZombies"),
+      statAmmo: document.getElementById("statAmmo")
     };
 
     const view = { w: canvas.width, h: canvas.height };
@@ -539,14 +545,23 @@
 
     function updateHud() {
       if (state.mode === "runner_endless" || state.mode === "runner_level_play") {
-        ui.hp.textContent = Math.max(0, Math.round(runner.hp));
-        ui.score.textContent = Math.round(runner.score);
-        ui.tasks.textContent = "-";
-        ui.found.textContent = "-";
-        ui.zombies.textContent = "-";
-        ui.ammo.textContent = "-";
+        const endless = state.mode === "runner_endless";
+        ui.statHp.style.display = endless ? "" : "none";
+        ui.statScore.style.display = endless ? "" : "none";
+        ui.statTasks.style.display = "none";
+        ui.statFound.style.display = "none";
+        ui.statZombies.style.display = "none";
+        ui.statAmmo.style.display = "none";
+        ui.hp.textContent = endless ? Math.max(0, Math.round(runner.hp)) : "";
+        ui.score.textContent = endless ? Math.round(runner.score) : "";
         return;
       }
+      ui.statHp.style.display = "";
+      ui.statScore.style.display = "";
+      ui.statTasks.style.display = "";
+      ui.statFound.style.display = "";
+      ui.statZombies.style.display = "";
+      ui.statAmmo.style.display = "";
       ui.hp.textContent = Math.max(0, Math.round(state.hp));
       ui.score.textContent = state.score;
       ui.tasks.textContent = `${state.taskDone}/${state.totalTasks}`;
@@ -816,6 +831,7 @@
       if (state.mode === "runner_editor") return;
       if (state.mode === "runner_endless" || state.mode === "runner_level_play") {
         updateRunner(dt);
+        updateHud();
         return;
       }
       if (!state.difficultyKey) return;
@@ -1100,14 +1116,17 @@
         ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(view.w, y); ctx.stroke();
       }
       ctx.fillStyle = "#2e376f";
-      ctx.fillRect(0, view.h - 65, view.w, 10);
+      ctx.fillRect(0, view.h - 90, view.w, 10);
       for (const o of editor.objects) {
-        const y = view.h - 90 - o.h;
+        const y = (o.baseY ?? (view.h - 90 - o.h));
         if (o.type === "spike") {
           ctx.fillStyle = "#ff5b59";
-          ctx.beginPath(); ctx.moveTo(o.x, view.h - 90); ctx.lineTo(o.x + o.w / 2, y); ctx.lineTo(o.x + o.w, view.h - 90); ctx.closePath(); ctx.fill();
+          ctx.beginPath(); ctx.moveTo(o.x, y + o.h); ctx.lineTo(o.x + o.w / 2, y); ctx.lineTo(o.x + o.w, y + o.h); ctx.closePath(); ctx.fill();
         } else if (o.type === "block") {
-          texturedRect(o.x, y, 32, 32, "#8d96a5", "#4f5664", 6);
+          ctx.fillStyle = "#8d96a5";
+          ctx.fillRect(o.x, y, 32, 32);
+          ctx.strokeStyle = "#4f5664";
+          ctx.strokeRect(o.x, y, 32, 32);
         } else {
           ctx.fillStyle = "#ffd93b"; ctx.beginPath(); ctx.arc(o.x + 12, y + 12, 10, 0, Math.PI * 2); ctx.fill();
         }
@@ -1164,15 +1183,19 @@
         runner.spawnTimer -= dt;
         if (runner.spawnTimer <= 0) {
           const x = view.w + 30;
-          const block = { x, type: "block", w: 32, h: 32 };
-          runner.obstacles.push(block);
-          if (Math.random() < 0.55) {
-            runner.obstacles.push({ x, type: "spike", w: 30, h: 30, baseY: view.h - 90 - block.h });
+          const len = 2 + Math.floor(Math.random() * 3);
+          const cols = [];
+          for (let i = 0; i < len; i++) {
+            const bx = x + i * 40;
+            cols.push(bx);
+            runner.obstacles.push({ x: bx, type: "block", w: 32, h: 32, baseY: view.h - 122 });
           }
-          if (Math.random() < 0.7) {
-            runner.obstacles.push({ x: x + 10, type: "orb", w: 24, h: 24, baseY: view.h - 180 - Math.random() * 80 });
+          const spikeCol = cols[Math.floor(Math.random() * cols.length)];
+          runner.obstacles.push({ x: spikeCol + 1, type: "spike", w: 30, h: 30, baseY: view.h - 120 - 30 });
+          if (Math.random() < 0.8) {
+            runner.obstacles.push({ x: spikeCol + 4, type: "orb", w: 24, h: 24, baseY: view.h - 220 - Math.random() * 70 });
           }
-          runner.spawnTimer = 0.45 + Math.random() * 0.6;
+          runner.spawnTimer = 0.9 + Math.random() * 0.7;
         }
       }
 
@@ -1200,8 +1223,6 @@
         runner.score += 5;
       }
       runner.obstacles = runner.obstacles.filter((o) => !o.dead && o.x > -80);
-      ui.hp.textContent = runner.hp;
-      ui.score.textContent = runner.score;
       ui.message.textContent = runner.invuln > 0 ? `Захист ${runner.invuln.toFixed(1)}с` : "Runner";
       if (runner.hp <= 0) {
         state.mode = "menu";
@@ -1213,7 +1234,7 @@
       ctx.fillStyle = "#10162f";
       ctx.fillRect(0, 0, view.w, view.h);
       ctx.fillStyle = "#2e376f";
-      ctx.fillRect(0, view.h - 65, view.w, 10);
+      ctx.fillRect(0, view.h - 90, view.w, 10);
       ctx.fillStyle = "#7de2ff";
       ctx.fillRect(120, runner.y, 24, 24);
       for (const o of runner.obstacles) {
@@ -1223,7 +1244,10 @@
           ctx.fillStyle = "#ff5b59";
           ctx.beginPath(); ctx.moveTo(o.x, base); ctx.lineTo(o.x + o.w / 2, y); ctx.lineTo(o.x + o.w, base); ctx.closePath(); ctx.fill();
         } else if (o.type === "block") {
-          texturedRect(o.x, y, 32, 32, "#8d96a5", "#4f5664", 6);
+          ctx.fillStyle = "#8d96a5";
+          ctx.fillRect(o.x, y, 32, 32);
+          ctx.strokeStyle = "#4f5664";
+          ctx.strokeRect(o.x, y, 32, 32);
         } else {
           ctx.fillStyle = "#ffd93b"; ctx.beginPath(); ctx.arc(o.x + 12, y + 12, 10, 0, Math.PI * 2); ctx.fill();
           ctx.strokeStyle = "#8f6d00"; ctx.stroke();
@@ -1522,12 +1546,16 @@
       if (state.mode !== "runner_editor") return;
       const rect = canvas.getBoundingClientRect();
       const x = ((e.clientX - rect.left) / rect.width) * view.w;
-      const sx = Math.floor(x / 20) * 20;
+      const y = ((e.clientY - rect.top) / rect.height) * view.h;
+      const sx = Math.floor(x / 40) * 40;
+      const sy = Math.floor(y / 40) * 40;
       if (editor.tool === "erase") {
-        editor.objects = editor.objects.filter((o) => Math.abs(o.x - sx) > 16);
+        editor.objects = editor.objects.filter((o) => !(Math.abs(o.x - sx) < 2 && Math.abs((o.baseY ?? 0) - sy) < 2));
         return;
       }
-      editor.objects.push({ x: sx, type: editor.tool, w: editor.tool === "block" ? 32 : 30, h: editor.tool === "block" ? 32 : 30 });
+      const occupied = editor.objects.some((o) => Math.abs(o.x - sx) < 2 && Math.abs((o.baseY ?? 0) - sy) < 2);
+      if (occupied) return;
+      editor.objects.push({ x: sx, baseY: sy, type: editor.tool, w: editor.tool === "block" ? 32 : 30, h: editor.tool === "block" ? 32 : 30 });
     });
 
     state.msg = "Спочатку обери складність.";
