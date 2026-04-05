@@ -106,6 +106,15 @@
       font-size: 13px;
       line-height: 1.35;
     }
+    .nick-link {
+      border: 0;
+      background: transparent;
+      color: #9ae2ff;
+      cursor: pointer;
+      text-decoration: underline;
+      font-weight: 700;
+      padding: 0;
+    }
   </style>
 </head>
 <body>
@@ -161,7 +170,23 @@
         <button class="difficulty-btn" id="btnRunnerCreator">Ранер: Створити рівень</button>
         <button class="difficulty-btn" id="btnMyLevels">Свої рівні</button>
         <button class="difficulty-btn" id="btnOtherLevels">Рівні інших</button>
+        <button class="difficulty-btn" id="btnProfile">Профіль</button>
+        <button class="difficulty-btn" id="btnLeaderboards">Лідерборди</button>
       </div>
+    </div>
+  </div>
+  <div class="difficulty-modal" id="profileModal" style="display:none;">
+    <div class="difficulty-box" style="max-width:760px;">
+      <div id="profileContent"></div>
+      <button class="difficulty-btn" id="closeProfileBtn" style="margin-top:8px;">Закрити</button>
+    </div>
+  </div>
+  <div class="difficulty-modal" id="leaderboardModal" style="display:none;">
+    <div class="difficulty-box" style="max-width:760px;">
+      <b>Лідерборди</b>
+      <div id="leaderboardTabs" style="display:flex; gap:6px; flex-wrap:wrap; margin-top:8px;"></div>
+      <div id="leaderboardBody" style="margin-top:8px; max-height:420px; overflow:auto;"></div>
+      <button class="difficulty-btn" id="closeLeaderboardBtn" style="margin-top:8px;">Закрити</button>
     </div>
   </div>
   <div class="difficulty-modal" id="levelBrowser" style="display:none;">
@@ -229,6 +254,11 @@
     const difficultyModal = document.getElementById("difficultyModal");
     const mainMenu = document.getElementById("mainMenu");
     const levelBrowser = document.getElementById("levelBrowser");
+    const profileModal = document.getElementById("profileModal");
+    const leaderboardModal = document.getElementById("leaderboardModal");
+    const profileContent = document.getElementById("profileContent");
+    const leaderboardTabs = document.getElementById("leaderboardTabs");
+    const leaderboardBody = document.getElementById("leaderboardBody");
     const levelCards = document.getElementById("levelCards");
     const levelDetail = document.getElementById("levelDetail");
     const browserTitle = document.getElementById("browserTitle");
@@ -321,6 +351,7 @@
       showMap: false,
       msg: "",
       frame: 0,
+      sessionTime: 0,
       tutorial: { active: false }
     };
 
@@ -392,6 +423,64 @@
       }
       if (!count) return "—";
       return difficultyLabel(order[Math.round(total / count) - 1]);
+    }
+    const RATED_STARS = { easy: 1, normal: 2, hard: 3, insane: 4 };
+    function isAdmin(user) { return user === "Vityapro"; }
+    function ensureProfile(data, user) {
+      if (!user) return null;
+      data.profiles = data.profiles || {};
+      if (!data.profiles[user]) {
+        data.profiles[user] = {
+          points: 0,
+          stars: 0,
+          creatorPoints: 0,
+          bestTimes: { easy: null, normal: null, hard: null }
+        };
+      }
+      return data.profiles[user];
+    }
+    function awardPoints(user, points) {
+      if (!user || points <= 0) return;
+      const d = loadData();
+      const p = ensureProfile(d, user);
+      p.points += Math.floor(points);
+      saveData(d);
+    }
+    function recordSurvivalWinTime(user, diff, timeSec) {
+      if (!user || !["easy","normal","hard"].includes(diff)) return;
+      const d = loadData();
+      const p = ensureProfile(d, user);
+      const prev = p.bestTimes[diff];
+      if (prev === null || timeSec < prev) p.bestTimes[diff] = Number(timeSec.toFixed(2));
+      saveData(d);
+    }
+    function levelStarReward(level) {
+      if (!level?.adminRating) return 0;
+      return RATED_STARS[level.adminRating] || 0;
+    }
+    function markLevelCompleted(data, level, user) {
+      if (!level || !user) return;
+      level.completedBy = level.completedBy || [];
+      level.starAwardedTo = level.starAwardedTo || [];
+      if (!level.completedBy.includes(user)) level.completedBy.push(user);
+      const stars = levelStarReward(level);
+      if (stars > 0 && !level.starAwardedTo.includes(user)) {
+        level.starAwardedTo.push(user);
+        const p = ensureProfile(data, user);
+        p.stars += stars;
+      }
+    }
+    function profileCardHtml(name, data) {
+      const p = ensureProfile(data, name) || { points: 0, stars: 0, creatorPoints: 0, bestTimes: {} };
+      const mine = data.levels.filter((l) => l.author === name);
+      const badge = isAdmin(name) ? ' <span style="background:#ffdb5e;color:#332;padding:2px 6px;border-radius:12px;">ADMIN</span>' : "";
+      const best = p.bestTimes || {};
+      return `<div style="background:#1e275d;border:1px solid #4b57be;border-radius:12px;padding:12px;">
+        <h3 style="margin:0 0 8px 0;">${name}${badge}</h3>
+        <div>⭐ Зірки: <b>${p.stars || 0}</b> • 🧩 Creator Points: <b>${p.creatorPoints || 0}</b> • ⭐ Очки: <b>${p.points || 0}</b></div>
+        <div style="margin-top:6px;">⏱ Easy: <b>${best.easy ?? "—"}</b>s • Normal: <b>${best.normal ?? "—"}</b>s • Hard: <b>${best.hard ?? "—"}</b>s</div>
+        <div style="margin-top:6px;">🗂 Рівнів створено: <b>${mine.length}</b> (${mine.filter((x) => x.published).length} опубліковано)</div>
+      </div>`;
     }
 
     function createBlocks() {
@@ -560,6 +649,7 @@
       state.over = false;
       state.win = false;
       state.frame = 0;
+      state.sessionTime = 0;
       state.pendingRestart = false;
       state.pendingRestartTimer = 0;
       state.msg = "Виконуй завдання, виживай і викривай імпосторів.";
@@ -906,6 +996,7 @@
       if (!state.difficultyKey) return;
       if (state.over) return;
       state.frame++;
+      state.sessionTime += dt;
       if (state.pendingRestart) {
         state.pendingRestartTimer -= dt;
         if (state.pendingRestartTimer <= 0) {
@@ -975,6 +1066,8 @@
         state.over = true;
         state.win = true;
         state.score += 100;
+        const d = loadData();
+        if (d.currentUser) recordSurvivalWinTime(d.currentUser, state.difficultyKey, state.sessionTime);
         state.msg = "Перемога! Ти завершив усі місії MegaFuse.";
       }
 
@@ -1404,7 +1497,7 @@
             const d = loadData();
             const lv = d.levels.find((l) => l.id === runner.currentLevelId);
             const user = d.currentUser || "guest";
-            if (lv) { lv.completedBy = lv.completedBy || []; if (!lv.completedBy.includes(user)) lv.completedBy.push(user); saveData(d); }
+            if (lv) { markLevelCompleted(d, lv, user); saveData(d); }
             state.mode = "menu";
             mainMenu.style.display = "grid";
           }
@@ -1514,10 +1607,17 @@
       if (e.code === "KeyE" && !e.repeat) tryInteract();
 
       if (e.code === "KeyX" && !e.repeat) {
+        const d = loadData();
+        if (d.currentUser) {
+          if (state.mode === "survival") awardPoints(d.currentUser, state.score);
+          if (state.mode === "runner_endless" || state.mode === "runner_level_play") awardPoints(d.currentUser, runner.score);
+        }
         state.mode = "menu";
         mainMenu.style.display = "grid";
         difficultyModal.style.display = "none";
         levelBrowser.style.display = "none";
+        profileModal.style.display = "none";
+        leaderboardModal.style.display = "none";
         editorTools.style.display = "none";
         return;
       }
@@ -1601,8 +1701,9 @@
 
     const STORAGE_KEY = "megafuse_data_v1";
     function loadData() {
-      const d = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{\"accounts\":{},\"currentUser\":\"\",\"levels\":[]}");
+      const d = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{\"accounts\":{},\"currentUser\":\"\",\"levels\":[],\"profiles\":{}}");
       let changed = false;
+      d.profiles = d.profiles || {};
       let maxId = 0;
       for (const lv of d.levels || []) maxId = Math.max(maxId, Number(lv.displayId || 0));
       for (const lv of d.levels || []) {
@@ -1611,14 +1712,20 @@
         if (!("publishDate" in lv)) { lv.publishDate = lv.published ? Date.now() : null; changed = true; }
         if (!lv.difficultyVotes) { lv.difficultyVotes = { easy: 0, normal: 0, hard: 0, insane: 0 }; changed = true; }
         if (!lv.difficultyByUser) { lv.difficultyByUser = {}; changed = true; }
+        if (!lv.starAwardedTo) { lv.starAwardedTo = []; changed = true; }
+        if (!("adminRating" in lv)) { lv.adminRating = null; changed = true; }
       }
+      Object.keys(d.accounts || {}).forEach((u) => ensureProfile(d, u));
+      if (d.currentUser) ensureProfile(d, d.currentUser);
       if (changed) saveData(d);
       return d;
     }
     function saveData(data) { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); }
     function refreshAuth() {
       const d = loadData();
-      authState.textContent = d.currentUser ? `Залогінено: ${d.currentUser}` : "Не залогінено";
+      authState.innerHTML = d.currentUser
+        ? `Залогінено: <b>${d.currentUser}</b>${isAdmin(d.currentUser) ? ' <span style="background:#ffdb5e;color:#332;padding:2px 6px;border-radius:10px;">ADMIN</span>' : ""}`
+        : "Не залогінено";
     }
 
     document.getElementById("startCustomBtn").addEventListener("click", () => {
@@ -1652,13 +1759,13 @@
       const pass = prompt("Пароль:");
       if (!nick || !pass) return;
       if (d.accounts[nick]) return alert("Такий нік вже є");
-      d.accounts[nick] = pass; d.currentUser = nick; saveData(d); refreshAuth();
+      d.accounts[nick] = pass; d.currentUser = nick; ensureProfile(d, nick); saveData(d); refreshAuth();
     });
     document.getElementById("btnLogin").addEventListener("click", () => {
       const d = loadData();
       const nick = prompt("Нік:");
       const pass = prompt("Пароль:");
-      if (d.accounts[nick] && d.accounts[nick] === pass) { d.currentUser = nick; saveData(d); refreshAuth(); }
+      if (d.accounts[nick] && d.accounts[nick] === pass) { d.currentUser = nick; ensureProfile(d, nick); saveData(d); refreshAuth(); }
       else alert("Невірний логін");
     });
     document.getElementById("btnLogout").addEventListener("click", () => {
@@ -1700,7 +1807,8 @@
         const idText = `#${lv.displayId || "?"}`;
         const pubDate = lv.publishDate ? formatDate(lv.publishDate) : "не опубліковано";
         const diff = avgDifficulty(lv.difficultyVotes);
-        card.innerHTML = `<b>${idText} ${lv.name}</b> ${done} by ${lv.author}<br/>📅 ${pubDate} • 🎵 ${lv.music || "Stereo Madness"}<br/>🎚 ${diff} • 👁 ${lv.views || 0} 👍 ${lv.likes || 0} 👎 ${lv.dislikes || 0}`;
+        const badge = isAdmin(lv.author) ? " 👑" : "";
+        card.innerHTML = `<b>${idText} ${lv.name}</b> ${done} by <button class="nick-link" data-user="${lv.author}">${lv.author}${badge}</button><br/>📅 ${pubDate} • 🎵 ${lv.music || "Stereo Madness"}<br/>🎚 ${diff} • 👁 ${lv.views || 0} 👍 ${lv.likes || 0} 👎 ${lv.dislikes || 0}`;
         card.onclick = () => showLevelDetail(lv.id, browserState.type);
         levelCards.appendChild(card);
       });
@@ -1738,14 +1846,15 @@
       levelDetail.style.display = "block";
       const pubDate = lv.publishDate ? formatDate(lv.publishDate) : "не опубліковано";
       const diff = avgDifficulty(lv.difficultyVotes);
-      const comments = (lv.comments || []).map((c, i) => `${i + 1}) ${c.user}: ${c.text} 👍${c.likes || 0} 👎${c.dislikes || 0}`).join("<br/>") || "Нема коментарів";
-      levelDetail.innerHTML = `<b>#${lv.displayId || "?"} ${lv.name}</b> by ${lv.author}<br/>📅 ${pubDate} • 🎵 ${lv.music || "Stereo Madness"}<br/>🎚 ${diff}<br/>👁 ${lv.views || 0} 👍 ${lv.likes || 0} 👎 ${lv.dislikes || 0}<br/><div style="max-height:120px;overflow:auto;margin-top:6px;">${comments}</div>`;
+      const comments = (lv.comments || []).map((c, i) => `${i + 1}) <button class="nick-link" data-user="${c.user}">${c.user}${isAdmin(c.user) ? " 👑" : ""}</button>: ${c.text} 👍${c.likes || 0} 👎${c.dislikes || 0}`).join("<br/>") || "Нема коментарів";
+      levelDetail.innerHTML = `<b>#${lv.displayId || "?"} ${lv.name}</b> by <button class="nick-link" data-user="${lv.author}">${lv.author}${isAdmin(lv.author) ? " 👑" : ""}</button><br/>📅 ${pubDate} • 🎵 ${lv.music || "Stereo Madness"}<br/>🎚 ${diff}${lv.adminRating ? ` • Admin rated: ${difficultyLabel(lv.adminRating)} (⭐${levelStarReward(lv)})` : ""}<br/>👁 ${lv.views || 0} 👍 ${lv.likes || 0} 👎 ${lv.dislikes || 0}<br/><div style="max-height:120px;overflow:auto;margin-top:6px;">${comments}</div>`;
       const actions = document.createElement("div");
       actions.style.marginTop = "8px";
       actions.innerHTML = `<button class="difficulty-btn" id="playLvBtn">Play</button>
       <button class="difficulty-btn" id="likeLvBtn">Like</button>
       <button class="difficulty-btn" id="dislikeLvBtn">Dislike</button>
       <button class="difficulty-btn" id="voteDiffBtn">Vote Difficulty</button>
+      ${isAdmin(d.currentUser) ? '<button class="difficulty-btn" id="adminRateBtn">Admin Rate</button>' : ''}
       <button class="difficulty-btn" id="commentLvBtn">Comment</button>
       <button class="difficulty-btn" id="reactCommentBtn">React Comment</button>
       ${type === "mine" ? '<button class="difficulty-btn" id="publishLvBtn">Publish</button><button class="difficulty-btn" id="editLvBtn">Edit</button>' : ''}`;
@@ -1771,6 +1880,29 @@
         lv.difficultyVotes[pick] = (lv.difficultyVotes[pick] || 0) + 1;
         saveData(d);
         browserState.source = d.levels.filter((x) => browserState.type === "mine" ? x.author === (d.currentUser || "guest") : x.published);
+        renderLevelCards();
+        showLevelDetail(levelId, type);
+      };
+      const adminBtn = document.getElementById("adminRateBtn");
+      if (adminBtn) adminBtn.onclick = () => {
+        const pick = prompt("Admin rating: easy / normal / hard / insane")?.trim();
+        if (!["easy","normal","hard","insane"].includes(pick)) return;
+        const firstRate = !lv.adminRating;
+        lv.adminRating = pick;
+        if (firstRate) {
+          const authorProfile = ensureProfile(d, lv.author);
+          authorProfile.creatorPoints += 1;
+        }
+        lv.starAwardedTo = lv.starAwardedTo || [];
+        for (const who of (lv.completedBy || [])) {
+          const stars = levelStarReward(lv);
+          if (stars > 0 && !lv.starAwardedTo.includes(who)) {
+            lv.starAwardedTo.push(who);
+            const pp = ensureProfile(d, who);
+            pp.stars += stars;
+          }
+        }
+        saveData(d);
         renderLevelCards();
         showLevelDetail(levelId, type);
       };
@@ -1817,14 +1949,84 @@
         document.getElementById("backToEditorBtn").style.display = "none";
       };
     }
+    function openProfile(userName = null) {
+      const d = loadData();
+      const who = userName || d.currentUser;
+      if (!who) return alert("Спочатку залогінься");
+      ensureProfile(d, who);
+      saveData(d);
+      profileContent.innerHTML = profileCardHtml(who, d);
+      mainMenu.style.display = "none";
+      levelBrowser.style.display = "none";
+      leaderboardModal.style.display = "none";
+      profileModal.style.display = "grid";
+    }
+    function renderLeaderboard(kind) {
+      const d = loadData();
+      const rows = Object.keys(d.accounts || {}).map((u) => ({ user: u, p: ensureProfile(d, u) }));
+      const by = {
+        points: (a, b) => (b.p.points || 0) - (a.p.points || 0),
+        stars: (a, b) => (b.p.stars || 0) - (a.p.stars || 0),
+        creator: (a, b) => (b.p.creatorPoints || 0) - (a.p.creatorPoints || 0),
+        easy: (a, b) => (a.p.bestTimes.easy ?? 1e12) - (b.p.bestTimes.easy ?? 1e12),
+        normal: (a, b) => (a.p.bestTimes.normal ?? 1e12) - (b.p.bestTimes.normal ?? 1e12),
+        hard: (a, b) => (a.p.bestTimes.hard ?? 1e12) - (b.p.bestTimes.hard ?? 1e12)
+      };
+      rows.sort(by[kind]);
+      leaderboardBody.innerHTML = rows.slice(0, 25).map((r, i) => {
+        const v = kind === "points" ? r.p.points :
+          kind === "stars" ? r.p.stars :
+          kind === "creator" ? r.p.creatorPoints :
+          r.p.bestTimes[kind];
+        return `<div style="background:#1f2758;border:1px solid #4f5bbc;border-radius:8px;padding:8px;margin:6px 0;">
+          <b>#${i + 1}</b> <button class="nick-link" data-user="${r.user}">${r.user}${isAdmin(r.user) ? " 👑" : ""}</button> — <b>${v ?? "—"}</b>${["easy","normal","hard"].includes(kind) ? "s" : ""}
+        </div>`;
+      }).join("") || "<div>Ще немає даних</div>";
+    }
+    function openLeaderboards() {
+      const tabs = [
+        ["points","Очки"],["stars","Зірки"],["creator","Creator Points"],
+        ["easy","Easy Mode"],["normal","Normal Mode"],["hard","Hard Mode"]
+      ];
+      leaderboardTabs.innerHTML = "";
+      tabs.forEach(([id, label], idx) => {
+        const b = document.createElement("button");
+        b.className = "difficulty-btn";
+        b.textContent = label;
+        b.onclick = () => renderLeaderboard(id);
+        leaderboardTabs.appendChild(b);
+        if (idx === 0) renderLeaderboard(id);
+      });
+      mainMenu.style.display = "none";
+      profileModal.style.display = "none";
+      leaderboardModal.style.display = "grid";
+    }
 
     document.getElementById("btnMyLevels").addEventListener("click", () => {
       const d = loadData(); if (!d.currentUser) return alert("Спочатку залогінься");
       openLevelBrowser("mine");
     });
     document.getElementById("btnOtherLevels").addEventListener("click", () => openLevelBrowser("other"));
+    document.getElementById("btnProfile").addEventListener("click", () => openProfile());
+    document.getElementById("btnLeaderboards").addEventListener("click", () => openLeaderboards());
+    document.getElementById("closeProfileBtn").addEventListener("click", () => {
+      profileModal.style.display = "none";
+      mainMenu.style.display = "grid";
+    });
+    document.getElementById("closeLeaderboardBtn").addEventListener("click", () => {
+      leaderboardModal.style.display = "none";
+      mainMenu.style.display = "grid";
+    });
     levelSearchInput.addEventListener("input", () => { if (levelBrowser.style.display === "grid") renderLevelCards(); });
     difficultyFilter.addEventListener("change", () => { if (levelBrowser.style.display === "grid") renderLevelCards(); });
+    [levelCards, levelDetail, leaderboardBody].forEach((root) => {
+      root.addEventListener("click", (e) => {
+        const btn = e.target.closest(".nick-link");
+        if (!btn) return;
+        e.stopPropagation();
+        openProfile(btn.dataset.user);
+      });
+    });
     document.getElementById("closeBrowserBtn").addEventListener("click", () => {
       levelBrowser.style.display = "none";
       mainMenu.style.display = "grid";
@@ -1868,7 +2070,9 @@
         dislikedBy: [],
         viewedBy: [],
         difficultyVotes: { easy: 0, normal: 0, hard: 0, insane: 0 },
-        difficultyByUser: {}
+        difficultyByUser: {},
+        starAwardedTo: [],
+        adminRating: null
       });
       saveData(d); alert("Збережено");
     };
