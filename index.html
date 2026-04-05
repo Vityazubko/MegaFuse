@@ -347,6 +347,13 @@
     function clamp(v, a, b) { return Math.max(a, Math.min(v, b)); }
     function rand(min, max) { return Math.random() * (max - min) + min; }
     function dist(a, b, x, y) { return Math.hypot(a - x, b - y); }
+    function portalType(t) {
+      return ["gravity_up_portal","gravity_down_portal","ship_portal","cube_portal"].includes(t);
+    }
+    function objRect(o) {
+      if (portalType(o.type)) return { x: o.x, y: (o.baseY ?? 0) - 80, w: 40, h: 120 };
+      return { x: o.x, y: (o.baseY ?? 0), w: o.w || 40, h: o.h || 40 };
+    }
 
     function createBlocks() {
       const blocks = [];
@@ -1135,25 +1142,30 @@
       ctx.fillRect(0, view.h - 90, view.w, 10);
       for (let i = 0; i < editor.objects.length; i++) {
         const o = editor.objects[i];
-        const y = (o.baseY ?? (view.h - 90 - o.h));
-        const ox = o.x - editor.scrollX;
+        const r = objRect(o);
+        const y = r.y;
+        const ox = r.x - editor.scrollX;
         const selected = i === editor.selectedIndex;
         if (o.type === "spike") {
           ctx.fillStyle = "#ff5b59";
-          ctx.beginPath(); ctx.moveTo(ox, y + o.h); ctx.lineTo(ox + o.w / 2, y); ctx.lineTo(ox + o.w, y + o.h); ctx.closePath(); ctx.fill();
+          if (o.flipped) {
+            ctx.beginPath(); ctx.moveTo(ox, y); ctx.lineTo(ox + o.w / 2, y + o.h); ctx.lineTo(ox + o.w, y); ctx.closePath(); ctx.fill();
+          } else {
+            ctx.beginPath(); ctx.moveTo(ox, y + o.h); ctx.lineTo(ox + o.w / 2, y); ctx.lineTo(ox + o.w, y + o.h); ctx.closePath(); ctx.fill();
+          }
         } else if (o.type === "block") {
           ctx.fillStyle = "#8d96a5";
           ctx.fillRect(ox, y, 40, 40);
           ctx.strokeStyle = "#4f5664";
           ctx.strokeRect(ox, y, 40, 40);
         } else if (o.type === "gravity_up_portal") {
-          ctx.fillStyle = "#ffd54a"; ctx.fillRect(ox + 6, y + 4, 28, 32);
+          ctx.fillStyle = "#ffd54a"; ctx.fillRect(ox + 6, y + 4, 28, 112);
         } else if (o.type === "gravity_down_portal") {
-          ctx.fillStyle = "#4aa3ff"; ctx.fillRect(ox + 6, y + 4, 28, 32);
+          ctx.fillStyle = "#4aa3ff"; ctx.fillRect(ox + 6, y + 4, 28, 112);
         } else if (o.type === "ship_portal") {
-          ctx.fillStyle = "#ff63cf"; ctx.fillRect(ox + 6, y + 4, 28, 32);
+          ctx.fillStyle = "#ff63cf"; ctx.fillRect(ox + 6, y + 4, 28, 112);
         } else if (o.type === "cube_portal") {
-          ctx.fillStyle = "#6dff72"; ctx.fillRect(ox + 6, y + 4, 28, 32);
+          ctx.fillStyle = "#6dff72"; ctx.fillRect(ox + 6, y + 4, 28, 112);
         } else if (o.type === "gravity_orb") {
           ctx.fillStyle = "#6aa5ff"; ctx.beginPath(); ctx.arc(ox + 20, y + 20, 14, 0, Math.PI * 2); ctx.fill();
         } else {
@@ -1162,7 +1174,7 @@
         if (selected) {
           ctx.strokeStyle = "#3dff60";
           ctx.lineWidth = 3;
-          ctx.strokeRect(ox + 1, y + 1, 38, 38);
+          ctx.strokeRect(ox + 1, y + 1, r.w - 2, r.h - 2);
           ctx.lineWidth = 1;
         }
       }
@@ -1253,11 +1265,12 @@
         runner.coyote = Math.max(0, runner.coyote - dt);
       }
       if (runner.jumpBuffer > 0 && (runner.onGround || runner.coyote > 0 || justLanded)) {
-        runner.vy = runner.gravity === 1 ? -11.5 : 11.5;
+        runner.vy = runner.gravity === 1 ? -9.4 : 9.4;
         runner.onGround = false;
         runner.jumpBuffer = 0;
         runner.coyote = 0;
       }
+      runner.topPlatformActive = runner.form === "ship";
 
       if (state.mode === "runner_endless") {
         runner.spawnTimer -= dt;
@@ -1282,21 +1295,24 @@
 
       for (const o of runner.obstacles) {
         o.x -= 5.5;
-        const orbY = (o.baseY ?? (view.h - 90 - o.h));
+        const r = objRect(o);
+        const orbY = r.y;
         if (o.type === "orb" && Math.abs(o.x - 120) < 22 && Math.abs(runner.y - orbY) < 40) {
           o.canBoost = true;
         }
-        if (Math.abs(o.x - 120) < 22 && Math.abs(runner.y - orbY) < 45) {
-          if (o.type === "gravity_up_portal") { runner.gravity = -1; runner.topPlatformActive = true; runner.floorSpikesActive = true; }
-          if (o.type === "gravity_down_portal") { runner.gravity = 1; runner.topPlatformActive = false; runner.floorSpikesActive = false; }
+        const px = 120, py = runner.y, pw = runner.size, ph = runner.size;
+        if (px < r.x + r.w && px + pw > r.x && py < r.y + r.h && py + ph > r.y) {
+          if (o.type === "gravity_up_portal") { runner.gravity = -1; }
+          if (o.type === "gravity_down_portal") { runner.gravity = 1; }
           if (o.type === "ship_portal") runner.form = "ship";
           if (o.type === "cube_portal") runner.form = "cube";
           if (o.type === "gravity_orb" && state.keys["Space"]) { runner.gravity *= -1; o.dead = true; }
         }
         if ((o.type === "spike" || o.type === "block") && !o.dead) {
-          const px = 120, py = runner.y, pw = runner.size, ph = runner.size;
-          const oy = (o.baseY ?? (view.h - 90 - o.h));
-          if (px < o.x + o.w && px + pw > o.x && py < oy + o.h && py + ph > oy) {
+          const hit = o.type === "spike"
+            ? (px < o.x + 30 && px + pw > o.x + 10 && py < r.y + 34 && py + ph > r.y + 12)
+            : (px < o.x + 40 && px + pw > o.x && py < r.y + 40 && py + ph > r.y);
+          if (hit) {
             if (runner.invuln <= 0) {
               runner.hp -= 20;
               runner.invuln = state.mode === "runner_endless" ? 3 : 0;
@@ -1315,12 +1331,12 @@
       }
       const activeOrb = runner.obstacles.find((o) => o.type === "orb" && o.canBoost);
       if (activeOrb && state.keys["Space"] && runner.form !== "ship") {
-        runner.vy = -12;
+        runner.vy = -9.8;
         activeOrb.dead = true;
         runner.score += 5;
       }
       if (runner.form === "ship") {
-        if (state.keys["Space"]) runner.vy += runner.gravity === 1 ? -0.9 : 0.9;
+        if (state.keys["Space"]) runner.vy += runner.gravity === 1 ? -0.35 : 0.35;
       }
       if (runner.y < 40) {
         runner.hp -= 20;
@@ -1368,27 +1384,42 @@
           ctx.beginPath(); ctx.moveTo(x, view.h - 90); ctx.lineTo(x + 10, view.h - 108); ctx.lineTo(x + 20, view.h - 90); ctx.closePath(); ctx.fill();
         }
       }
-      ctx.fillStyle = "#7de2ff";
-      ctx.fillRect(120, runner.y, runner.size, runner.size);
+      if (runner.form === "ship") {
+        ctx.fillStyle = "#7de2ff";
+        ctx.beginPath();
+        ctx.moveTo(120, runner.y + runner.size / 2);
+        ctx.lineTo(120 + runner.size, runner.y + runner.size / 2);
+        ctx.lineTo(120 + 8, runner.y);
+        ctx.closePath();
+        ctx.fill();
+      } else {
+        ctx.fillStyle = "#7de2ff";
+        ctx.fillRect(120, runner.y, runner.size, runner.size);
+      }
       for (const o of runner.obstacles) {
-        const y = (o.baseY ?? (view.h - 90 - o.h));
+        const r = objRect(o);
+        const y = r.y;
         if (o.type === "spike") {
-          const base = y + o.h;
+          const base = y + 40;
           ctx.fillStyle = "#ff5b59";
-          ctx.beginPath(); ctx.moveTo(o.x, base); ctx.lineTo(o.x + o.w / 2, y); ctx.lineTo(o.x + o.w, base); ctx.closePath(); ctx.fill();
+          if (o.flipped) {
+            ctx.beginPath(); ctx.moveTo(o.x, y); ctx.lineTo(o.x + 20, base); ctx.lineTo(o.x + 40, y); ctx.closePath(); ctx.fill();
+          } else {
+            ctx.beginPath(); ctx.moveTo(o.x, base); ctx.lineTo(o.x + 20, y); ctx.lineTo(o.x + 40, base); ctx.closePath(); ctx.fill();
+          }
         } else if (o.type === "block") {
           ctx.fillStyle = "#8d96a5";
           ctx.fillRect(o.x, y, 40, 40);
           ctx.strokeStyle = "#4f5664";
           ctx.strokeRect(o.x, y, 40, 40);
         } else if (o.type === "gravity_up_portal") {
-          ctx.fillStyle = "#ffd54a"; ctx.fillRect(o.x + 6, y + 4, 28, 32);
+          ctx.fillStyle = "#ffd54a"; ctx.fillRect(o.x + 6, y + 4, 28, 112);
         } else if (o.type === "gravity_down_portal") {
-          ctx.fillStyle = "#4aa3ff"; ctx.fillRect(o.x + 6, y + 4, 28, 32);
+          ctx.fillStyle = "#4aa3ff"; ctx.fillRect(o.x + 6, y + 4, 28, 112);
         } else if (o.type === "ship_portal") {
-          ctx.fillStyle = "#ff63cf"; ctx.fillRect(o.x + 6, y + 4, 28, 32);
+          ctx.fillStyle = "#ff63cf"; ctx.fillRect(o.x + 6, y + 4, 28, 112);
         } else if (o.type === "cube_portal") {
-          ctx.fillStyle = "#6dff72"; ctx.fillRect(o.x + 6, y + 4, 28, 32);
+          ctx.fillStyle = "#6dff72"; ctx.fillRect(o.x + 6, y + 4, 28, 112);
         } else if (o.type === "gravity_orb") {
           ctx.fillStyle = "#6aa5ff"; ctx.beginPath(); ctx.arc(o.x + 20, y + 20, 14, 0, Math.PI * 2); ctx.fill();
         } else {
@@ -1445,7 +1476,7 @@
         if (e.code === "ArrowRight") obj.x += 40;
         if (e.code === "ArrowUp") obj.baseY -= 40;
         if (e.code === "ArrowDown") obj.baseY += 40;
-        if (e.code === "KeyR") obj.flipped = !obj.flipped;
+        if (e.code === "KeyU") obj.flipped = !obj.flipped;
       }
 
       if (e.code === "KeyR" && !e.repeat) {
@@ -1715,18 +1746,29 @@
       const y = ((e.clientY - rect.top) / rect.height) * view.h;
       const sx = Math.floor((x - 10) / 40) * 40 + 10;
       const sy = Math.floor((y - 10) / 40) * 40 + 10;
-      const atIndex = editor.objects.findIndex((o) => Math.abs(o.x - sx) < 2 && Math.abs((o.baseY ?? 0) - sy) < 2);
+      const atIndex = editor.objects.findIndex((o) => {
+        const r = objRect(o);
+        return sx >= r.x && sx < r.x + r.w && sy >= r.y && sy < r.y + r.h;
+      });
       if (editor.tool === "select") {
         editor.selectedIndex = atIndex;
         return;
       }
       if (editor.tool === "erase") {
-        editor.objects = editor.objects.filter((o) => !(Math.abs(o.x - sx) < 2 && Math.abs((o.baseY ?? 0) - sy) < 2));
+        editor.objects = editor.objects.filter((o) => {
+          const r = objRect(o);
+          return !(sx >= r.x && sx < r.x + r.w && sy >= r.y && sy < r.y + r.h);
+        });
         return;
       }
-      const occupied = atIndex !== -1;
+      const newObj = { x: sx, baseY: sy, type: editor.tool, w: 40, h: 40 };
+      const nr = objRect(newObj);
+      const occupied = editor.objects.some((o) => {
+        const r = objRect(o);
+        return nr.x < r.x + r.w && nr.x + nr.w > r.x && nr.y < r.y + r.h && nr.y + nr.h > r.y;
+      });
       if (occupied) return;
-      editor.objects.push({ x: sx, baseY: sy, type: editor.tool, w: 40, h: 40 });
+      editor.objects.push(newObj);
     });
     canvas.addEventListener("wheel", (e) => {
       if (state.mode !== "runner_editor") return;
