@@ -167,6 +167,16 @@
   <div class="difficulty-modal" id="levelBrowser" style="display:none;">
     <div class="difficulty-box">
       <b id="browserTitle">Рівні</b>
+      <div id="browserFilters" style="display:none; margin-top:8px; gap:8px; align-items:center; flex-wrap:wrap;">
+        <input id="levelSearchInput" type="text" placeholder="Пошук: назва або ID" style="background:#0f1330;border:1px solid #4c58b7;color:#eef2ff;border-radius:8px;padding:6px 8px;" />
+        <select id="difficultyFilter" style="background:#0f1330;border:1px solid #4c58b7;color:#eef2ff;border-radius:8px;padding:6px 8px;">
+          <option value="all">Уся складність</option>
+          <option value="easy">Легкий</option>
+          <option value="normal">Нормальний</option>
+          <option value="hard">Важкий</option>
+          <option value="insane">Божевільний</option>
+        </select>
+      </div>
       <div id="levelCards" style="max-height:420px; overflow:auto; margin-top:8px;"></div>
       <div id="levelDetail" style="margin-top:8px; display:none; background:#21295c; padding:8px; border-radius:8px;"></div>
       <button class="difficulty-btn" id="closeBrowserBtn" style="margin-top:8px;">Закрити</button>
@@ -179,10 +189,16 @@
     <button class="difficulty-btn" id="toolGravUp">G Up</button>
     <button class="difficulty-btn" id="toolGravDown">G Down</button>
     <button class="difficulty-btn" id="toolGravOrb">G Orb</button>
-    <button class="difficulty-btn" id="toolShip">Ship</button>
     <button class="difficulty-btn" id="toolCube">Cube</button>
+    <button class="difficulty-btn" id="toolStartPos">StartPos</button>
     <button class="difficulty-btn" id="toolSelect">Select</button>
     <button class="difficulty-btn" id="toolErase">Erase</button>
+    <select id="editorMusic" class="difficulty-btn" style="cursor:pointer;">
+      <option value="Stereo Madness">♫ Stereo Madness</option>
+      <option value="Back on Track">♫ Back on Track</option>
+      <option value="Polargeist">♫ Polargeist</option>
+      <option value="Dry Out">♫ Dry Out</option>
+    </select>
     <button class="difficulty-btn" id="saveLevelBtn">Save</button>
     <button class="difficulty-btn" id="playLevelBtn">Play</button>
     <button class="difficulty-btn" id="exitEditorBtn">Exit</button>
@@ -216,6 +232,9 @@
     const levelCards = document.getElementById("levelCards");
     const levelDetail = document.getElementById("levelDetail");
     const browserTitle = document.getElementById("browserTitle");
+    const browserFilters = document.getElementById("browserFilters");
+    const levelSearchInput = document.getElementById("levelSearchInput");
+    const difficultyFilter = document.getElementById("difficultyFilter");
     const editorTools = document.getElementById("editorTools");
     const authState = document.getElementById("authState");
     const ui = {
@@ -343,16 +362,36 @@
     const editor = { name: "", tool: "block", objects: [] };
     editor.scrollX = 0;
     editor.selectedIndex = -1;
+    editor.music = "Stereo Madness";
+    let browserState = { type: "mine", source: [] };
 
     function clamp(v, a, b) { return Math.max(a, Math.min(v, b)); }
     function rand(min, max) { return Math.random() * (max - min) + min; }
     function dist(a, b, x, y) { return Math.hypot(a - x, b - y); }
     function portalType(t) {
-      return ["gravity_up_portal","gravity_down_portal","ship_portal","cube_portal"].includes(t);
+      return ["gravity_up_portal","gravity_down_portal","cube_portal"].includes(t);
     }
     function objRect(o) {
+      if (o.type === "start_pos") return { x: o.x, y: o.baseY ?? 0, w: 40, h: 40 };
       if (portalType(o.type)) return { x: o.x, y: (o.baseY ?? 0) - 80, w: 40, h: 120 };
       return { x: o.x, y: (o.baseY ?? 0), w: o.w || 40, h: o.h || 40 };
+    }
+    function difficultyLabel(key) {
+      return ({ easy: "Легкий", normal: "Нормальний", hard: "Важкий", insane: "Божевільний" })[key] || "Нормальний";
+    }
+    function formatDate(ts) {
+      return new Date(ts).toLocaleDateString("uk-UA", { year: "numeric", month: "2-digit", day: "2-digit" });
+    }
+    function avgDifficulty(votes = {}) {
+      const order = ["easy", "normal", "hard", "insane"];
+      let total = 0, count = 0;
+      for (const key of order) {
+        const n = Number(votes[key] || 0);
+        total += n * (order.indexOf(key) + 1);
+        count += n;
+      }
+      if (!count) return "—";
+      return difficultyLabel(order[Math.round(total / count) - 1]);
     }
 
     function createBlocks() {
@@ -379,6 +418,14 @@
         if (!blocks.some((b) => circleRectCollision(x, y, radius, b))) return { x, y };
       }
       return { x: world.arenaW / 2, y: world.arenaH / 2 };
+    }
+    function groundSpawnPosition(radius = 18) {
+      for (let i = 0; i < 900; i++) {
+        const x = rand(radius + 2, world.arenaW - radius - 2);
+        const y = world.arenaH - radius - 4;
+        if (!blocks.some((b) => circleRectCollision(x, y, radius, b))) return { x, y };
+      }
+      return randomFreePosition(radius);
     }
 
     function applyDifficulty(key) {
@@ -516,7 +563,7 @@
       state.pendingRestart = false;
       state.pendingRestartTimer = 0;
       state.msg = "Виконуй завдання, виживай і викривай імпосторів.";
-      const p = randomFreePosition(player.r);
+      const p = groundSpawnPosition(player.r);
       player.x = p.x;
       player.y = p.y;
       player.fireCooldown = 0;
@@ -1162,10 +1209,12 @@
           ctx.fillStyle = "#ffd54a"; ctx.fillRect(ox + 6, y + 4, 28, 112);
         } else if (o.type === "gravity_down_portal") {
           ctx.fillStyle = "#4aa3ff"; ctx.fillRect(ox + 6, y + 4, 28, 112);
-        } else if (o.type === "ship_portal") {
-          ctx.fillStyle = "#ff63cf"; ctx.fillRect(ox + 6, y + 4, 28, 112);
         } else if (o.type === "cube_portal") {
           ctx.fillStyle = "#6dff72"; ctx.fillRect(ox + 6, y + 4, 28, 112);
+        } else if (o.type === "start_pos") {
+          ctx.fillStyle = "#8bffdc"; ctx.fillRect(ox + 4, y + 4, 32, 32);
+          ctx.fillStyle = "#0f8";
+          ctx.beginPath(); ctx.moveTo(ox + 12, y + 18); ctx.lineTo(ox + 28, y + 10); ctx.lineTo(ox + 28, y + 26); ctx.closePath(); ctx.fill();
         } else if (o.type === "gravity_orb") {
           ctx.fillStyle = "#6aa5ff"; ctx.beginPath(); ctx.arc(ox + 20, y + 20, 14, 0, Math.PI * 2); ctx.fill();
         } else {
@@ -1182,16 +1231,19 @@
       ctx.fillText(`Scroll X: ${Math.floor(editor.scrollX)}`, 14, 20);
     }
 
-    function startRunnerEndless(levelData = null, fromEditor = false, levelId = null) {
+    function startRunnerEndless(levelData = null, fromEditor = false, levelId = null, levelMusic = "") {
       state.mode = levelData ? "runner_level_play" : "runner_endless";
+      const startPos = levelData?.find((o) => o.type === "start_pos");
+      const startY = startPos ? (startPos.baseY ?? 420) : 420;
       runner.hp = 100;
       runner.score = 0;
       runner.invuln = 0;
       runner.scoreTick = 0;
-      runner.y = 420;
+      runner.y = clamp(startY, 100, view.h - 90 - runner.size);
       runner.vy = 0;
       runner.onGround = true;
       runner.levelData = levelData;
+      runner.startY = clamp(startY, 100, view.h - 90 - runner.size);
       runner.fromEditor = fromEditor;
       runner.currentLevelId = levelId;
       runner.obstacles = [];
@@ -1211,7 +1263,7 @@
       mainMenu.style.display = "none";
       difficultyModal.style.display = "none";
       document.getElementById("backToEditorBtn").style.display = fromEditor ? "block" : "none";
-      state.msg = "Runner mode!";
+      state.msg = levelMusic ? `Runner mode! Now playing: ${levelMusic}` : "Runner mode!";
     }
 
     function updateRunner(dt) {
@@ -1220,6 +1272,8 @@
         if (runner.respawnTimer <= 0) {
           runner.y = view.h - 90 - runner.size;
           runner.vy = 0;
+          runner.form = "cube";
+          runner.gravity = 1;
         }
         return;
       }
@@ -1231,8 +1285,7 @@
         runner.scoreTick = runner.scoreTick % 1;
       }
       const grav = runner.gravity === 1 ? 0.62 : -0.62;
-      if (runner.form === "ship") runner.vy += grav * 0.55;
-      else runner.vy += grav;
+      runner.vy += grav;
       runner.y += runner.vy;
       let floor = view.h - 90 - runner.size;
       let ceiling = 90;
@@ -1265,31 +1318,30 @@
         runner.coyote = Math.max(0, runner.coyote - dt);
       }
       if (runner.jumpBuffer > 0 && (runner.onGround || runner.coyote > 0 || justLanded)) {
-        runner.vy = runner.gravity === 1 ? -9.4 : 9.4;
+        runner.vy = runner.gravity === 1 ? -11.2 : 11.2;
         runner.onGround = false;
         runner.jumpBuffer = 0;
         runner.coyote = 0;
       }
-      runner.topPlatformActive = runner.form === "ship";
+      runner.topPlatformActive = false;
 
       if (state.mode === "runner_endless") {
         runner.spawnTimer -= dt;
         if (runner.spawnTimer <= 0) {
           const x = view.w + 40;
           const patterns = [
-            [{t:"block",dx:0,dy:0},{t:"block",dx:40,dy:0},{t:"spike",dx:40,dy:-40},{t:"orb",dx:40,dy:-120}],
-            [{t:"block",dx:0,dy:0},{t:"block",dx:40,dy:0},{t:"block",dx:80,dy:0},{t:"spike",dx:80,dy:-40}],
-            [{t:"block",dx:0,dy:0},{t:"spike",dx:0,dy:-40},{t:"block",dx:80,dy:0},{t:"orb",dx:80,dy:-130}],
-            [{t:"block",dx:0,dy:0},{t:"block",dx:40,dy:0},{t:"block",dx:80,dy:0},{t:"orb",dx:40,dy:-140}],
-            [{t:"block",dx:0,dy:0},{t:"gravity_up_portal",dx:40,dy:-40},{t:"block",dx:40,dy:-120},{t:"spike",dx:40,dy:-160}],
-            [{t:"block",dx:0,dy:0},{t:"ship_portal",dx:40,dy:-40},{t:"block",dx:40,dy:-120},{t:"cube_portal",dx:120,dy:-120}],
-            [{t:"block",dx:0,dy:-120},{t:"gravity_down_portal",dx:40,dy:-120},{t:"block",dx:40,dy:0}]
+            [{t:"block",dx:0,dy:0},{t:"spike",dx:120,dy:-40}],
+            [{t:"block",dx:0,dy:0},{t:"block",dx:40,dy:0},{t:"spike",dx:160,dy:-40}],
+            [{t:"block",dx:0,dy:0},{t:"orb",dx:120,dy:-120},{t:"spike",dx:240,dy:-40}],
+            [{t:"block",dx:0,dy:0},{t:"gravity_up_portal",dx:200,dy:-40},{t:"block",dx:200,dy:-120}],
+            [{t:"block",dx:0,dy:-120},{t:"gravity_down_portal",dx:200,dy:-120},{t:"block",dx:200,dy:0}]
           ];
           const p = patterns[Math.floor(Math.random()*patterns.length)];
           for (const it of p) {
-            runner.obstacles.push({ x: x + it.dx, type: it.t === "orb" ? "orb" : it.t === "spike" ? "spike" : "block", w: 40, h: 40, baseY: view.h - 130 + it.dy });
+            const mapType = ["orb","spike","gravity_up_portal","gravity_down_portal","gravity_orb","cube_portal","start_pos"].includes(it.t) ? it.t : "block";
+            runner.obstacles.push({ x: x + it.dx, type: mapType, w: 40, h: 40, baseY: view.h - 130 + it.dy });
           }
-          runner.spawnTimer = 1.0 + Math.random() * 0.8;
+          runner.spawnTimer = 1.2 + Math.random() * 0.9;
         }
       }
 
@@ -1304,7 +1356,6 @@
         if (px < r.x + r.w && px + pw > r.x && py < r.y + r.h && py + ph > r.y) {
           if (o.type === "gravity_up_portal") { runner.gravity = -1; }
           if (o.type === "gravity_down_portal") { runner.gravity = 1; }
-          if (o.type === "ship_portal") runner.form = "ship";
           if (o.type === "cube_portal") runner.form = "cube";
           if (o.type === "gravity_orb" && state.keys["Space"]) { runner.gravity *= -1; o.dead = true; }
         }
@@ -1330,13 +1381,10 @@
         }
       }
       const activeOrb = runner.obstacles.find((o) => o.type === "orb" && o.canBoost);
-      if (activeOrb && state.keys["Space"] && runner.form !== "ship") {
-        runner.vy = -9.8;
+      if (activeOrb && state.keys["Space"]) {
+        runner.vy = -10.8;
         activeOrb.dead = true;
         runner.score += 5;
-      }
-      if (runner.form === "ship") {
-        if (state.keys["Space"]) runner.vy += runner.gravity === 1 ? -0.35 : 0.35;
       }
       if (runner.y < 40) {
         runner.hp -= 20;
@@ -1364,8 +1412,15 @@
       }
       ui.message.textContent = runner.invuln > 0 ? `Захист ${runner.invuln.toFixed(1)}с` : "Runner";
       if (runner.hp <= 0) {
-        state.mode = "menu";
-        mainMenu.style.display = "grid";
+        runner.hp = 100;
+        runner.respawnTimer = 0.8;
+        if (runner.levelData) {
+          runner.obstacles = runner.levelData.map((o) => ({ ...o, x: o.x + view.w }));
+          runner.endWall = null;
+          runner.emptyTimer = 0;
+        } else {
+          runner.obstacles = [];
+        }
       }
     }
 
@@ -1384,18 +1439,8 @@
           ctx.beginPath(); ctx.moveTo(x, view.h - 90); ctx.lineTo(x + 10, view.h - 108); ctx.lineTo(x + 20, view.h - 90); ctx.closePath(); ctx.fill();
         }
       }
-      if (runner.form === "ship") {
-        ctx.fillStyle = "#7de2ff";
-        ctx.beginPath();
-        ctx.moveTo(120, runner.y + runner.size / 2);
-        ctx.lineTo(120 + runner.size, runner.y + runner.size / 2);
-        ctx.lineTo(120 + 8, runner.y);
-        ctx.closePath();
-        ctx.fill();
-      } else {
-        ctx.fillStyle = "#7de2ff";
-        ctx.fillRect(120, runner.y, runner.size, runner.size);
-      }
+      ctx.fillStyle = "#7de2ff";
+      ctx.fillRect(120, runner.y, runner.size, runner.size);
       for (const o of runner.obstacles) {
         const r = objRect(o);
         const y = r.y;
@@ -1416,10 +1461,20 @@
           ctx.fillStyle = "#ffd54a"; ctx.fillRect(o.x + 6, y + 4, 28, 112);
         } else if (o.type === "gravity_down_portal") {
           ctx.fillStyle = "#4aa3ff"; ctx.fillRect(o.x + 6, y + 4, 28, 112);
-        } else if (o.type === "ship_portal") {
-          ctx.fillStyle = "#ff63cf"; ctx.fillRect(o.x + 6, y + 4, 28, 112);
         } else if (o.type === "cube_portal") {
           ctx.fillStyle = "#6dff72"; ctx.fillRect(o.x + 6, y + 4, 28, 112);
+        } else if (o.type === "start_pos") {
+          ctx.fillStyle = "#8bffdc";
+          ctx.fillRect(o.x + 4, y + 4, 32, 32);
+          ctx.fillStyle = "#0c4";
+          ctx.fillRect(o.x + 18, y - 20, 4, 24);
+          ctx.fillStyle = "#0f8";
+          ctx.beginPath();
+          ctx.moveTo(o.x + 22, y - 20);
+          ctx.lineTo(o.x + 36, y - 14);
+          ctx.lineTo(o.x + 22, y - 8);
+          ctx.closePath();
+          ctx.fill();
         } else if (o.type === "gravity_orb") {
           ctx.fillStyle = "#6aa5ff"; ctx.beginPath(); ctx.arc(o.x + 20, y + 20, 14, 0, Math.PI * 2); ctx.fill();
         } else {
@@ -1546,7 +1601,19 @@
 
     const STORAGE_KEY = "megafuse_data_v1";
     function loadData() {
-      return JSON.parse(localStorage.getItem(STORAGE_KEY) || "{\"accounts\":{},\"currentUser\":\"\",\"levels\":[]}");
+      const d = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{\"accounts\":{},\"currentUser\":\"\",\"levels\":[]}");
+      let changed = false;
+      let maxId = 0;
+      for (const lv of d.levels || []) maxId = Math.max(maxId, Number(lv.displayId || 0));
+      for (const lv of d.levels || []) {
+        if (!lv.displayId) { lv.displayId = ++maxId; changed = true; }
+        if (!lv.music) { lv.music = "Stereo Madness"; changed = true; }
+        if (!("publishDate" in lv)) { lv.publishDate = lv.published ? Date.now() : null; changed = true; }
+        if (!lv.difficultyVotes) { lv.difficultyVotes = { easy: 0, normal: 0, hard: 0, insane: 0 }; changed = true; }
+        if (!lv.difficultyByUser) { lv.difficultyByUser = {}; changed = true; }
+      }
+      if (changed) saveData(d);
+      return d;
     }
     function saveData(data) { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); }
     function refreshAuth() {
@@ -1604,6 +1671,8 @@
       if (!name) return;
       editor.name = name;
       editor.objects = [];
+      editor.music = "Stereo Madness";
+      document.getElementById("editorMusic").value = editor.music;
       editor.tool = "block";
       editor.scrollX = 0;
       state.mode = "runner_editor";
@@ -1612,21 +1681,43 @@
       document.getElementById("backToEditorBtn").style.display = "none";
     });
 
+    function renderLevelCards() {
+      const d = loadData();
+      const current = d.currentUser || "guest";
+      const query = levelSearchInput.value.trim().toLowerCase();
+      const df = difficultyFilter.value;
+      levelCards.innerHTML = "";
+      const filtered = browserState.source.filter((lv) => {
+        const sid = String(lv.displayId ?? "");
+        const byText = !query || lv.name.toLowerCase().includes(query) || sid.includes(query);
+        const byDiff = df === "all" || avgDifficulty(lv.difficultyVotes) === difficultyLabel(df);
+        return byText && byDiff;
+      });
+      filtered.forEach((lv) => {
+        const card = document.createElement("div");
+        card.style.cssText = "background:#8f542f;color:#fff;border:2px solid #6adf3f;border-radius:10px;padding:8px;margin:6px 0;cursor:pointer;";
+        const done = (lv.completedBy || []).includes(current) ? "✅" : "";
+        const idText = `#${lv.displayId || "?"}`;
+        const pubDate = lv.publishDate ? formatDate(lv.publishDate) : "не опубліковано";
+        const diff = avgDifficulty(lv.difficultyVotes);
+        card.innerHTML = `<b>${idText} ${lv.name}</b> ${done} by ${lv.author}<br/>📅 ${pubDate} • 🎵 ${lv.music || "Stereo Madness"}<br/>🎚 ${diff} • 👁 ${lv.views || 0} 👍 ${lv.likes || 0} 👎 ${lv.dislikes || 0}`;
+        card.onclick = () => showLevelDetail(lv.id, browserState.type);
+        levelCards.appendChild(card);
+      });
+      if (!filtered.length) levelCards.innerHTML = "<div style='color:#bfc8ff;'>Нічого не знайдено.</div>";
+    }
+
     function openLevelBrowser(type) {
       const d = loadData();
       const current = d.currentUser || "guest";
       const list = type === "mine" ? d.levels.filter((l) => l.author === current) : d.levels.filter((l) => l.published);
+      browserState = { type, source: list.slice().sort((a, b) => (a.displayId || 0) - (b.displayId || 0)) };
       browserTitle.textContent = type === "mine" ? "Твої рівні" : "Рівні інших";
-      levelCards.innerHTML = "";
       levelDetail.style.display = "none";
-      list.forEach((lv) => {
-        const card = document.createElement("div");
-        card.style.cssText = "background:#8f542f;color:#fff;border:2px solid #6adf3f;border-radius:10px;padding:8px;margin:6px 0;cursor:pointer;";
-        const done = (lv.completedBy || []).includes(current) ? "✅" : "";
-        card.innerHTML = `<b>${lv.name}</b> ${done} by ${lv.author}<br/>👁 ${lv.views || 0} 👍 ${lv.likes || 0} 👎 ${lv.dislikes || 0}`;
-        card.onclick = () => showLevelDetail(lv.id, type);
-        levelCards.appendChild(card);
-      });
+      browserFilters.style.display = type === "other" ? "flex" : "none";
+      levelSearchInput.value = "";
+      difficultyFilter.value = "all";
+      renderLevelCards();
       mainMenu.style.display = "none";
       levelBrowser.style.display = "grid";
     }
@@ -1645,18 +1736,21 @@
       }
       saveData(d);
       levelDetail.style.display = "block";
+      const pubDate = lv.publishDate ? formatDate(lv.publishDate) : "не опубліковано";
+      const diff = avgDifficulty(lv.difficultyVotes);
       const comments = (lv.comments || []).map((c, i) => `${i + 1}) ${c.user}: ${c.text} 👍${c.likes || 0} 👎${c.dislikes || 0}`).join("<br/>") || "Нема коментарів";
-      levelDetail.innerHTML = `<b>${lv.name}</b> by ${lv.author}<br/>👁 ${lv.views || 0} 👍 ${lv.likes || 0} 👎 ${lv.dislikes || 0}<br/><div style="max-height:120px;overflow:auto;margin-top:6px;">${comments}</div>`;
+      levelDetail.innerHTML = `<b>#${lv.displayId || "?"} ${lv.name}</b> by ${lv.author}<br/>📅 ${pubDate} • 🎵 ${lv.music || "Stereo Madness"}<br/>🎚 ${diff}<br/>👁 ${lv.views || 0} 👍 ${lv.likes || 0} 👎 ${lv.dislikes || 0}<br/><div style="max-height:120px;overflow:auto;margin-top:6px;">${comments}</div>`;
       const actions = document.createElement("div");
       actions.style.marginTop = "8px";
       actions.innerHTML = `<button class="difficulty-btn" id="playLvBtn">Play</button>
       <button class="difficulty-btn" id="likeLvBtn">Like</button>
       <button class="difficulty-btn" id="dislikeLvBtn">Dislike</button>
+      <button class="difficulty-btn" id="voteDiffBtn">Vote Difficulty</button>
       <button class="difficulty-btn" id="commentLvBtn">Comment</button>
       <button class="difficulty-btn" id="reactCommentBtn">React Comment</button>
       ${type === "mine" ? '<button class="difficulty-btn" id="publishLvBtn">Publish</button><button class="difficulty-btn" id="editLvBtn">Edit</button>' : ''}`;
       levelDetail.appendChild(actions);
-      document.getElementById("playLvBtn").onclick = () => { levelBrowser.style.display = "none"; startRunnerEndless(lv.data, false, lv.id); };
+      document.getElementById("playLvBtn").onclick = () => { levelBrowser.style.display = "none"; startRunnerEndless(lv.data, false, lv.id, lv.music || "Stereo Madness"); };
       document.getElementById("likeLvBtn").onclick = () => {
         if (lv.likedBy.includes(user)) return alert("Ти вже лайкнув");
         lv.likedBy.push(user); lv.likes = (lv.likes || 0) + 1; saveData(d); showLevelDetail(levelId, type);
@@ -1664,6 +1758,21 @@
       document.getElementById("dislikeLvBtn").onclick = () => {
         if (lv.dislikedBy.includes(user)) return alert("Ти вже дізлайкнув");
         lv.dislikedBy.push(user); lv.dislikes = (lv.dislikes || 0) + 1; saveData(d); showLevelDetail(levelId, type);
+      };
+      document.getElementById("voteDiffBtn").onclick = () => {
+        if (!d.currentUser) return alert("Потрібен акаунт");
+        const pick = prompt("Складність: easy / normal / hard / insane")?.trim();
+        if (!["easy","normal","hard","insane"].includes(pick)) return;
+        lv.difficultyVotes = lv.difficultyVotes || { easy: 0, normal: 0, hard: 0, insane: 0 };
+        lv.difficultyByUser = lv.difficultyByUser || {};
+        const prev = lv.difficultyByUser[d.currentUser];
+        if (prev) lv.difficultyVotes[prev] = Math.max(0, (lv.difficultyVotes[prev] || 0) - 1);
+        lv.difficultyByUser[d.currentUser] = pick;
+        lv.difficultyVotes[pick] = (lv.difficultyVotes[pick] || 0) + 1;
+        saveData(d);
+        browserState.source = d.levels.filter((x) => browserState.type === "mine" ? x.author === (d.currentUser || "guest") : x.published);
+        renderLevelCards();
+        showLevelDetail(levelId, type);
       };
       document.getElementById("commentLvBtn").onclick = () => {
         if (!d.currentUser) return alert("Потрібен акаунт");
@@ -1687,11 +1796,20 @@
         saveData(d); showLevelDetail(levelId, type);
       };
       const pubBtn = document.getElementById("publishLvBtn");
-      if (pubBtn) pubBtn.onclick = () => { lv.published = true; saveData(d); showLevelDetail(levelId, type); };
+      if (pubBtn) pubBtn.onclick = () => {
+        lv.published = true;
+        if (!lv.publishDate) lv.publishDate = Date.now();
+        saveData(d);
+        browserState.source = d.levels.filter((x) => browserState.type === "mine" ? x.author === (d.currentUser || "guest") : x.published);
+        renderLevelCards();
+        showLevelDetail(levelId, type);
+      };
       const editBtn = document.getElementById("editLvBtn");
       if (editBtn) editBtn.onclick = () => {
         editor.name = lv.name;
         editor.objects = (lv.data || []).map((o) => ({...o}));
+        editor.music = lv.music || "Stereo Madness";
+        document.getElementById("editorMusic").value = editor.music;
         editor.scrollX = 0;
         state.mode = "runner_editor";
         levelBrowser.style.display = "none";
@@ -1705,6 +1823,8 @@
       openLevelBrowser("mine");
     });
     document.getElementById("btnOtherLevels").addEventListener("click", () => openLevelBrowser("other"));
+    levelSearchInput.addEventListener("input", () => { if (levelBrowser.style.display === "grid") renderLevelCards(); });
+    difficultyFilter.addEventListener("change", () => { if (levelBrowser.style.display === "grid") renderLevelCards(); });
     document.getElementById("closeBrowserBtn").addEventListener("click", () => {
       levelBrowser.style.display = "none";
       mainMenu.style.display = "grid";
@@ -1716,10 +1836,11 @@
     document.getElementById("toolGravUp").onclick = () => editor.tool = "gravity_up_portal";
     document.getElementById("toolGravDown").onclick = () => editor.tool = "gravity_down_portal";
     document.getElementById("toolGravOrb").onclick = () => editor.tool = "gravity_orb";
-    document.getElementById("toolShip").onclick = () => editor.tool = "ship_portal";
     document.getElementById("toolCube").onclick = () => editor.tool = "cube_portal";
+    document.getElementById("toolStartPos").onclick = () => editor.tool = "start_pos";
     document.getElementById("toolSelect").onclick = () => editor.tool = "select";
     document.getElementById("toolErase").onclick = () => editor.tool = "erase";
+    document.getElementById("editorMusic").onchange = (e) => { editor.music = e.target.value; };
     document.getElementById("exitEditorBtn").onclick = () => {
       state.mode = "menu";
       editorTools.style.display = "none";
@@ -1729,10 +1850,29 @@
     document.getElementById("saveLevelBtn").onclick = () => {
       const d = loadData();
       if (!d.currentUser) return alert("Потрібен логін");
-      d.levels.push({ id: Date.now(), name: editor.name || "My Level", author: d.currentUser, data: editor.objects, published: false, views: 0, likes: 0, dislikes: 0, comments: [], likedBy: [], dislikedBy: [], viewedBy: [] });
+      const nextDisplayId = d.levels.reduce((m, l) => Math.max(m, Number(l.displayId || 0)), 0) + 1;
+      d.levels.push({
+        id: Date.now(),
+        displayId: nextDisplayId,
+        name: editor.name || "My Level",
+        author: d.currentUser,
+        music: document.getElementById("editorMusic").value || "Stereo Madness",
+        data: editor.objects.map((o) => ({ ...o })),
+        published: false,
+        publishDate: null,
+        views: 0,
+        likes: 0,
+        dislikes: 0,
+        comments: [],
+        likedBy: [],
+        dislikedBy: [],
+        viewedBy: [],
+        difficultyVotes: { easy: 0, normal: 0, hard: 0, insane: 0 },
+        difficultyByUser: {}
+      });
       saveData(d); alert("Збережено");
     };
-    document.getElementById("playLevelBtn").onclick = () => startRunnerEndless(editor.objects, true);
+    document.getElementById("playLevelBtn").onclick = () => startRunnerEndless(editor.objects, true, null, document.getElementById("editorMusic").value || "Stereo Madness");
     document.getElementById("backToEditorBtn").onclick = () => {
       state.mode = "runner_editor";
       document.getElementById("backToEditorBtn").style.display = "none";
@@ -1768,6 +1908,9 @@
         return nr.x < r.x + r.w && nr.x + nr.w > r.x && nr.y < r.y + r.h && nr.y + nr.h > r.y;
       });
       if (occupied) return;
+      if (editor.tool === "start_pos") {
+        editor.objects = editor.objects.filter((o) => o.type !== "start_pos");
+      }
       editor.objects.push(newObj);
     });
     canvas.addEventListener("wheel", (e) => {
