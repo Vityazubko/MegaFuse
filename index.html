@@ -166,6 +166,7 @@
         <button class="difficulty-btn" id="btnLogin">Логін</button>
         <button class="difficulty-btn" id="btnLogout">Вийти</button>
         <button class="difficulty-btn" id="btnSurvival">Виживання</button>
+        <button class="difficulty-btn" id="btnMultiplayer">Мультиплеєр</button>
         <button class="difficulty-btn" id="btnRunnerEndless">Ранер: Безкінечний</button>
         <button class="difficulty-btn" id="btnRunnerCreator">Ранер: Створити рівень</button>
         <button class="difficulty-btn" id="btnMyLevels">Свої рівні</button>
@@ -173,6 +174,20 @@
         <button class="difficulty-btn" id="btnProfile">Профіль</button>
         <button class="difficulty-btn" id="btnLeaderboards">Лідерборди</button>
       </div>
+    </div>
+  </div>
+  <div class="difficulty-modal" id="multiplayerModal" style="display:none;">
+    <div class="difficulty-box">
+      <b>Мультиплеєр: Виживання</b>
+      <div class="difficulty-grid" style="margin-top:10px;">
+        <button class="difficulty-btn" id="mpHostEasy">Створити Easy</button>
+        <button class="difficulty-btn" id="mpHostNormal">Створити Normal</button>
+        <button class="difficulty-btn" id="mpHostHard">Створити Hard</button>
+        <button class="difficulty-btn" id="mpHostCustom">Створити Custom</button>
+      </div>
+      <div id="mpJoinInfo" style="margin-top:10px;color:#c9d0ff;"></div>
+      <button class="difficulty-btn" id="mpJoinBtn" style="display:none;">Приєднатися</button>
+      <button class="difficulty-btn" id="mpCloseBtn" style="margin-top:8px;">Закрити</button>
     </div>
   </div>
   <div class="difficulty-modal" id="profileModal" style="display:none;">
@@ -241,10 +256,14 @@
       </div>
       <div id="message"></div>
     </div>
+    <div id="inventoryBar" style="display:flex;gap:8px;flex-wrap:wrap;background:rgba(24,28,59,.95);border:1px solid #2f3773;border-radius:10px;padding:8px 10px;">
+      <span style="font-size:12px;color:#9aa2d3;">Інвентар (1-5 вибір, P підняти, Z кинути, C використати)</span>
+      <div id="inventorySlots" style="display:flex;gap:6px;"></div>
+    </div>
     <canvas id="game" width="960" height="540"></canvas>
     <div class="controls">
-      <b>Керування:</b> Рух: <kbd>WASD</kbd> • Приціл: <kbd>←↑→↓</kbd> • Стрибок (Dash): <kbd>Space</kbd> • Постріл: <kbd>Q</kbd> • Взаємодія: <kbd>E</kbd> • Карта: <kbd>M</kbd> • Меню: <kbd>X</kbd> • Рестарт: <kbd>R</kbd> потім <kbd>T</kbd>.<br />
-      Величезна арена 100×100, рухома камера, 10 завдань, 8 амонгасів (2 імпостери), хвилі зомбі та Dash-доріжка. Спайки в авторанері з’являються раз на 15-45 секунд (з коротким попередженням).
+      <b id="controlsTitle">Керування:</b> <span id="controlsText">Рух: <kbd>WASD</kbd> • Приціл: <kbd>←↑→↓</kbd> • Стрибок (Dash): <kbd>Space</kbd> • Постріл: <kbd>Q</kbd> • Взаємодія: <kbd>E</kbd> • Карта: <kbd>M</kbd> • Меню: <kbd>X</kbd> • Рестарт: <kbd>R</kbd> потім <kbd>T</kbd>.</span><br />
+      <span id="controlsDesc">Величезна арена 100×100, рухома камера, 10 завдань, 8 амонгасів (2 імпостери), хвилі зомбі та Dash-доріжка.</span>
     </div>
   </div>
 
@@ -256,6 +275,14 @@
     const levelBrowser = document.getElementById("levelBrowser");
     const profileModal = document.getElementById("profileModal");
     const leaderboardModal = document.getElementById("leaderboardModal");
+    const multiplayerModal = document.getElementById("multiplayerModal");
+    const mpJoinInfo = document.getElementById("mpJoinInfo");
+    const mpJoinBtn = document.getElementById("mpJoinBtn");
+    const inventorySlots = document.getElementById("inventorySlots");
+    const controlsTitle = document.getElementById("controlsTitle");
+    const controlsText = document.getElementById("controlsText");
+    const controlsDesc = document.getElementById("controlsDesc");
+    const inventoryBar = document.getElementById("inventoryBar");
     const profileContent = document.getElementById("profileContent");
     const leaderboardTabs = document.getElementById("leaderboardTabs");
     const leaderboardBody = document.getElementById("leaderboardBody");
@@ -349,10 +376,23 @@
       over: false,
       win: false,
       showMap: false,
+      floorItems: [],
+      itemSpawnTimer: 20,
+      inventory: [{ type: "pistol", count: 1 }, null, null, null, null],
+      selectedSlot: 0,
+      shieldTimer: 0,
+      speedTimer: 0,
+      multiplayer: { active: false, roomId: null, isHost: false, other: null },
       msg: "",
       frame: 0,
       sessionTime: 0,
       tutorial: { active: false }
+    };
+    const ITEM_INFO = {
+      medkit: { name: "Медичка", color: "#66e3a5" },
+      shield: { name: "Щит", color: "#82b8ff" },
+      boots: { name: "Швидкісні Чоботи", color: "#f4d76d" },
+      compass: { name: "Компас", color: "#ffd1ff" }
     };
 
     const player = {
@@ -481,6 +521,93 @@
         <div style="margin-top:6px;">⏱ Easy: <b>${best.easy ?? "—"}</b>s • Normal: <b>${best.normal ?? "—"}</b>s • Hard: <b>${best.hard ?? "—"}</b>s</div>
         <div style="margin-top:6px;">🗂 Рівнів створено: <b>${mine.length}</b> (${mine.filter((x) => x.published).length} опубліковано)</div>
       </div>`;
+    }
+    function updateControlsText() {
+      if (state.mode === "runner_editor") {
+        controlsTitle.textContent = "Редактор рівня:";
+        controlsText.innerHTML = "ЛКМ: поставити об'єкт • Wheel: скрол по X • <kbd>Delete</kbd>: видалити selected • <kbd>U</kbd>: перевернути спайк • <kbd>←↑→↓</kbd>: рух selected.";
+        controlsDesc.textContent = "Режим конструктора: став блоки/портали/orb/StartPos, обери музику, збережи і тестуй рівень.";
+      } else {
+        controlsTitle.textContent = "Керування:";
+        controlsText.innerHTML = "Рух: <kbd>WASD</kbd> • Приціл: <kbd>←↑→↓</kbd> • Стрибок (Dash): <kbd>Space</kbd> • Постріл: <kbd>Q</kbd> • Взаємодія: <kbd>E</kbd> • Карта: <kbd>M</kbd> • Меню: <kbd>X</kbd>.";
+        controlsDesc.textContent = "Виживання + ранер + інвентар: P підняти, Z кинути, C використати.";
+      }
+    }
+    function itemName(type) { return ITEM_INFO[type]?.name || type; }
+    function hasItem(type) {
+      return state.inventory.some((s) => s && s.type === type && s.count > 0);
+    }
+    function addItem(type) {
+      for (let i = 1; i < 5; i++) {
+        const s = state.inventory[i];
+        if (s && s.type === type) { s.count++; return true; }
+      }
+      for (let i = 1; i < 5; i++) {
+        if (!state.inventory[i]) { state.inventory[i] = { type, count: 1 }; return true; }
+      }
+      return false;
+    }
+    function dropSelectedItem() {
+      const i = state.selectedSlot;
+      if (i === 0) return;
+      const s = state.inventory[i];
+      if (!s) return;
+      state.floorItems.push({ type: s.type, x: player.x + rand(-20, 20), y: player.y + rand(-20, 20) });
+      s.count--;
+      if (s.count <= 0) state.inventory[i] = null;
+    }
+    function pickupNearbyItem() {
+      const idx = state.floorItems.findIndex((it) => dist(player.x, player.y, it.x, it.y) < 44);
+      if (idx < 0) return;
+      const it = state.floorItems[idx];
+      if (!addItem(it.type)) { state.msg = "Інвентар повний (слоти 2-5)."; return; }
+      state.floorItems.splice(idx, 1);
+      state.msg = `Підібрано: ${itemName(it.type)}.`;
+    }
+    function useSelectedItem() {
+      const i = state.selectedSlot;
+      if (i === 0 || !state.inventory[i]) return;
+      const s = state.inventory[i];
+      if (s.type === "medkit") {
+        state.hp = Math.min((DIFFICULTIES[state.difficultyKey]?.hp || 200), state.hp + 50);
+      } else if (s.type === "shield") {
+        state.shieldTimer = 20;
+      } else if (s.type === "boots") {
+        state.speedTimer = 20;
+      } else if (s.type === "compass") {
+        state.msg = "Компас працює тільки в мультиплеєрі.";
+        return;
+      }
+      s.count--;
+      if (s.count <= 0) state.inventory[i] = null;
+    }
+    function renderInventory() {
+      inventorySlots.innerHTML = "";
+      for (let i = 0; i < 5; i++) {
+        const s = state.inventory[i];
+        const selected = i === state.selectedSlot;
+        const label = s ? `${i + 1}: ${s.type === "pistol" ? "Пістолет" : itemName(s.type)} x${s.count}` : `${i + 1}: пусто`;
+        const d = document.createElement("div");
+        d.style.cssText = `padding:4px 8px;border-radius:8px;border:1px solid ${selected ? "#66ff9d" : "#4f59b4"};background:${selected ? "#1f6a43" : "#1b2350"};font-size:12px;`;
+        d.textContent = label;
+        inventorySlots.appendChild(d);
+      }
+    }
+    const MP_KEY = "megafuse_mp_room_v1";
+    function loadMpRoom() { return JSON.parse(localStorage.getItem(MP_KEY) || "null"); }
+    function saveMpRoom(v) { if (!v) localStorage.removeItem(MP_KEY); else localStorage.setItem(MP_KEY, JSON.stringify(v)); }
+    function syncMultiplayerPresence() {
+      if (!state.multiplayer.roomId) return;
+      const d = loadData();
+      const user = d.currentUser;
+      if (!user) return;
+      const room = loadMpRoom();
+      if (!room || room.id !== state.multiplayer.roomId) return;
+      room.players = room.players || {};
+      room.players[user] = { x: player.x, y: player.y, t: Date.now() };
+      const others = Object.entries(room.players).filter(([u]) => u !== user);
+      state.multiplayer.other = others.length ? { user: others[0][0], ...others[0][1] } : null;
+      saveMpRoom(room);
     }
 
     function createBlocks() {
@@ -644,6 +771,12 @@
 
       state.score = 0;
       state.hp = DIFFICULTIES[state.difficultyKey || "normal"].hp;
+      state.floorItems = [];
+      state.itemSpawnTimer = 20;
+      state.inventory = [{ type: "pistol", count: 1 }, null, null, null, null];
+      state.selectedSlot = 0;
+      state.shieldTimer = 0;
+      state.speedTimer = 0;
       state.taskDone = 0;
       state.impostorsFound = 0;
       state.over = false;
@@ -659,6 +792,7 @@
       player.fireCooldown = 0;
       player.dirX = 1;
       player.dirY = 0;
+      player.speed = 4;
       player.ammo = player.maxAmmo;
       player.reloading = false;
       player.reloadTimer = 0;
@@ -666,12 +800,15 @@
       player.dash.vy = 0;
       player.dash.onGround = true;
       updateCamera();
+      renderInventory();
       updateHud();
     }
 
     function resetGame() {
       state.tutorial = { active: false };
       state.mode = "survival";
+      state.multiplayer = { active: false, roomId: null, isHost: false, other: null };
+      updateControlsText();
       resetWorld();
     }
 
@@ -696,6 +833,14 @@
       for (const b of blocks) if (circleRectCollision(nx, ny, r, b)) return false;
       return true;
     }
+    function damagePlayer(amount, message = "") {
+      if (state.shieldTimer > 0) {
+        if (message) state.msg = `${message} (щит поглинув шкоду)`;
+        return;
+      }
+      state.hp -= amount;
+      if (message) state.msg = message;
+    }
 
     function updateCamera() {
       camera.x = clamp(player.x - (view.w - world.dashLaneWidth) / 2, 0, world.arenaW - (view.w - world.dashLaneWidth));
@@ -704,6 +849,7 @@
 
     function updateHud() {
       if (state.mode === "runner_endless" || state.mode === "runner_level_play") {
+        inventoryBar.style.display = "none";
         const endless = state.mode === "runner_endless";
         ui.statHp.style.display = endless ? "" : "none";
         ui.statScore.style.display = endless ? "" : "none";
@@ -727,7 +873,12 @@
       ui.found.textContent = `${state.impostorsFound}/${state.totalImpostors}`;
       ui.zombies.textContent = state.zombies.length;
       ui.ammo.textContent = player.reloading ? "перезарядка..." : `${player.ammo}/${player.maxAmmo}`;
-      ui.message.textContent = state.msg;
+      inventoryBar.style.display = (state.mode === "survival" || state.mode === "survival_multiplayer") ? "flex" : "none";
+      const buffs = [];
+      if (state.shieldTimer > 0) buffs.push(`🛡 ${state.shieldTimer.toFixed(0)}с`);
+      if (state.speedTimer > 0) buffs.push(`👢 ${state.speedTimer.toFixed(0)}с`);
+      ui.message.textContent = buffs.length ? `${state.msg} | ${buffs.join(" ")}` : state.msg;
+      renderInventory();
     }
 
     function completeRandomTaskNearCrew(crewMember) {
@@ -778,9 +929,8 @@
         if (canMoveArena(nx, ny, z.r)) { z.x = nx; z.y = ny; }
         if (z.hitCd > 0) z.hitCd -= 1;
         if (d < z.r + player.r + 6 && z.hitCd <= 0) {
-          state.hp -= state.zombieDamage;
+          damagePlayer(state.zombieDamage, "Зомбі вкусив тебе!");
           z.hitCd = 35;
-          state.msg = "Зомбі вкусив тебе!";
         }
       }
 
@@ -841,7 +991,7 @@
 
         if (c.chasing && dist(c.x, c.y, player.x, player.y) < 24) {
           if (c.touchDamageCooldown <= 0) {
-            state.hp -= state.impostorDamage;
+            damagePlayer(state.impostorDamage, "Імпостор поранив тебе!");
             c.touchDamageCooldown = 2;
           }
         }
@@ -893,7 +1043,7 @@
 
       for (const b of state.enemyBullets) {
         if (dist(b.x, b.y, player.x, player.y) < player.r + 4) {
-          state.hp -= state.enemyDamage;
+          damagePlayer(state.enemyDamage, "В тебе влучив лучник!");
           b.life = 0;
         }
       }
@@ -967,9 +1117,8 @@
         const ph = player.dash.h;
         const spikeY = view.h - 72 - spike.h;
         if (!spike.hit && px < spike.x + spike.w && px + pw > spike.x && py < spikeY + spike.h && py + ph > spikeY) {
-          state.hp -= 20;
+          damagePlayer(20, "Ти не стрибнув через спайк: -20 HP");
           spike.hit = true;
-          state.msg = "Ти не стрибнув через спайк: -20 HP";
         }
       }
 
@@ -997,6 +1146,18 @@
       if (state.over) return;
       state.frame++;
       state.sessionTime += dt;
+      state.shieldTimer = Math.max(0, state.shieldTimer - dt);
+      state.speedTimer = Math.max(0, state.speedTimer - dt);
+      player.speed = state.speedTimer > 0 ? 6 : 4;
+      state.itemSpawnTimer -= dt;
+      if (state.itemSpawnTimer <= 0) {
+        const keys = ["medkit", "shield", "boots", "compass"];
+        const type = keys[Math.floor(Math.random() * keys.length)];
+        const p = randomFreePosition(10);
+        state.floorItems.push({ type, x: p.x, y: p.y });
+        state.itemSpawnTimer = 20;
+      }
+      if (state.multiplayer.active) syncMultiplayerPresence();
       if (state.pendingRestart) {
         state.pendingRestartTimer -= dt;
         if (state.pendingRestartTimer <= 0) {
@@ -1135,10 +1296,28 @@
         ctx.fillStyle = "#ffe0e8";
         ctx.fillRect(sx - 6, sy - 4, 12, 4);
       }
+      for (const it of state.floorItems) {
+        const sx = it.x - camera.x;
+        const sy = it.y - camera.y;
+        if (sx < -20 || sy < -20 || sx > arenaScreenW + 20 || sy > view.h + 20) continue;
+        ctx.fillStyle = ITEM_INFO[it.type]?.color || "#fff";
+        ctx.beginPath(); ctx.arc(sx, sy, 10, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = "#111";
+        ctx.font = "10px Inter, Arial";
+        ctx.fillText(it.type[0].toUpperCase(), sx - 3, sy + 3);
+      }
 
       const px = player.x - camera.x;
       const py = player.y - camera.y;
       drawPlayer(px, py);
+      if (state.multiplayer.active && state.multiplayer.other) {
+        const ox = state.multiplayer.other.x - camera.x;
+        const oy = state.multiplayer.other.y - camera.y;
+        ctx.fillStyle = "#ffffff";
+        ctx.beginPath(); ctx.arc(ox, oy, 14, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = "#111";
+        ctx.fillText("P2", ox - 8, oy + 4);
+      }
 
       for (const b of state.bullets) {
         const sx = b.x - camera.x;
@@ -1241,6 +1420,10 @@
         }
         ctx.fillStyle = "#2ee6a8";
         ctx.fillRect(x + player.x * sx - 3, y + player.y * sy - 3, 6, 6);
+        if (state.multiplayer.active && state.multiplayer.other && hasItem("compass")) {
+          ctx.fillStyle = "#ffffff";
+          ctx.fillRect(x + state.multiplayer.other.x * sx - 3, y + state.multiplayer.other.y * sy - 3, 6, 6);
+        }
       }
 
       const camW = (view.w - world.dashLaneWidth) * sx;
@@ -1357,6 +1540,7 @@
       difficultyModal.style.display = "none";
       document.getElementById("backToEditorBtn").style.display = fromEditor ? "block" : "none";
       state.msg = levelMusic ? `Runner mode! Now playing: ${levelMusic}` : "Runner mode!";
+      updateControlsText();
     }
 
     function updateRunner(dt) {
@@ -1605,23 +1789,38 @@
       }
 
       if (e.code === "KeyE" && !e.repeat) tryInteract();
+      if (e.code === "KeyP" && !e.repeat && (state.mode === "survival" || state.mode === "survival_multiplayer")) pickupNearbyItem();
+      if (e.code === "KeyZ" && !e.repeat && (state.mode === "survival" || state.mode === "survival_multiplayer")) dropSelectedItem();
+      if (e.code === "KeyC" && !e.repeat && (state.mode === "survival" || state.mode === "survival_multiplayer")) useSelectedItem();
+      if (/^Digit[1-5]$/.test(e.code)) state.selectedSlot = Number(e.code.replace("Digit", "")) - 1;
 
       if (e.code === "KeyX" && !e.repeat) {
         const d = loadData();
         if (d.currentUser) {
           if (state.mode === "survival") awardPoints(d.currentUser, state.score);
           if (state.mode === "runner_endless" || state.mode === "runner_level_play") awardPoints(d.currentUser, runner.score);
+          if (state.multiplayer.active) {
+            const room = loadMpRoom();
+            if (room?.players) {
+              delete room.players[d.currentUser];
+              if (!Object.keys(room.players).length) saveMpRoom(null);
+              else saveMpRoom(room);
+            }
+          }
         }
         state.mode = "menu";
+        state.multiplayer = { active: false, roomId: null, isHost: false, other: null };
         mainMenu.style.display = "grid";
         difficultyModal.style.display = "none";
         levelBrowser.style.display = "none";
         profileModal.style.display = "none";
         leaderboardModal.style.display = "none";
+        multiplayerModal.style.display = "none";
         editorTools.style.display = "none";
+        updateControlsText();
         return;
       }
-      if (e.code === "KeyM" && !e.repeat && state.mode === "survival") {
+      if (e.code === "KeyM" && !e.repeat && (state.mode === "survival" || state.mode === "survival_multiplayer")) {
         state.showMap = !state.showMap;
       }
       if (state.mode === "runner_editor" && editor.selectedIndex >= 0) {
@@ -1786,6 +1985,7 @@
       mainMenu.style.display = "none";
       editorTools.style.display = "block";
       document.getElementById("backToEditorBtn").style.display = "none";
+      updateControlsText();
     });
 
     function renderLevelCards() {
@@ -1947,6 +2147,7 @@
         levelBrowser.style.display = "none";
         editorTools.style.display = "block";
         document.getElementById("backToEditorBtn").style.display = "none";
+        updateControlsText();
       };
     }
     function openProfile(userName = null) {
@@ -2001,6 +2202,53 @@
       profileModal.style.display = "none";
       leaderboardModal.style.display = "grid";
     }
+    function openMultiplayerMenu() {
+      const d = loadData();
+      if (!d.currentUser) return alert("Спочатку залогінься");
+      const room = loadMpRoom();
+      if (room && room.host !== d.currentUser) {
+        mpJoinInfo.textContent = `Є активна гра від ${room.host}. Можна приєднатися.`;
+        mpJoinBtn.style.display = "inline-block";
+      } else {
+        mpJoinInfo.textContent = room ? "Ти вже хост цієї гри." : "Активних ігор поки немає.";
+        mpJoinBtn.style.display = "none";
+      }
+      mainMenu.style.display = "none";
+      multiplayerModal.style.display = "grid";
+    }
+    function startMultiplayerHost(diffKey, custom = false) {
+      const d = loadData();
+      if (!d.currentUser) return;
+      if (custom) buildCustomDifficulty();
+      applyDifficulty(diffKey);
+      resetWorld();
+      state.mode = "survival_multiplayer";
+      state.multiplayer = { active: true, roomId: `room_${Date.now()}`, isHost: true, other: null };
+      saveMpRoom({
+        id: state.multiplayer.roomId,
+        host: d.currentUser,
+        difficultyKey: diffKey,
+        customConfig: custom ? DIFFICULTIES.custom : null,
+        players: { [d.currentUser]: { x: player.x, y: player.y, t: Date.now() } }
+      });
+      multiplayerModal.style.display = "none";
+      updateControlsText();
+    }
+    function joinMultiplayerGame() {
+      const d = loadData();
+      const room = loadMpRoom();
+      if (!d.currentUser || !room) return;
+      if (room.customConfig) DIFFICULTIES.custom = room.customConfig;
+      applyDifficulty(room.difficultyKey || "normal");
+      resetWorld();
+      state.mode = "survival_multiplayer";
+      state.multiplayer = { active: true, roomId: room.id, isHost: false, other: null };
+      room.players = room.players || {};
+      room.players[d.currentUser] = { x: player.x, y: player.y, t: Date.now() };
+      saveMpRoom(room);
+      multiplayerModal.style.display = "none";
+      updateControlsText();
+    }
 
     document.getElementById("btnMyLevels").addEventListener("click", () => {
       const d = loadData(); if (!d.currentUser) return alert("Спочатку залогінься");
@@ -2009,6 +2257,16 @@
     document.getElementById("btnOtherLevels").addEventListener("click", () => openLevelBrowser("other"));
     document.getElementById("btnProfile").addEventListener("click", () => openProfile());
     document.getElementById("btnLeaderboards").addEventListener("click", () => openLeaderboards());
+    document.getElementById("btnMultiplayer").addEventListener("click", () => openMultiplayerMenu());
+    document.getElementById("mpHostEasy").addEventListener("click", () => startMultiplayerHost("easy"));
+    document.getElementById("mpHostNormal").addEventListener("click", () => startMultiplayerHost("normal"));
+    document.getElementById("mpHostHard").addEventListener("click", () => startMultiplayerHost("hard"));
+    document.getElementById("mpHostCustom").addEventListener("click", () => startMultiplayerHost("custom", true));
+    document.getElementById("mpJoinBtn").addEventListener("click", () => joinMultiplayerGame());
+    document.getElementById("mpCloseBtn").addEventListener("click", () => {
+      multiplayerModal.style.display = "none";
+      mainMenu.style.display = "grid";
+    });
     document.getElementById("closeProfileBtn").addEventListener("click", () => {
       profileModal.style.display = "none";
       mainMenu.style.display = "grid";
@@ -2048,6 +2306,7 @@
       editorTools.style.display = "none";
       document.getElementById("backToEditorBtn").style.display = "none";
       mainMenu.style.display = "grid";
+      updateControlsText();
     };
     document.getElementById("saveLevelBtn").onclick = () => {
       const d = loadData();
@@ -2081,6 +2340,7 @@
       state.mode = "runner_editor";
       document.getElementById("backToEditorBtn").style.display = "none";
       editorTools.style.display = "block";
+      updateControlsText();
     };
 
     canvas.addEventListener("click", (e) => {
@@ -2125,8 +2385,8 @@
 
     state.msg = "Спочатку обери складність.";
     updateHud();
+    updateControlsText();
     refreshAuth();
     requestAnimationFrame(loop);
   </script>
 </body>
-</html>
