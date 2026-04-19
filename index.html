@@ -106,6 +106,18 @@
       font-size: 13px;
       line-height: 1.35;
     }
+    .version-badge {
+      position: fixed;
+      right: 10px;
+      bottom: 10px;
+      background: rgba(16, 22, 55, 0.95);
+      border: 1px solid #5a65be;
+      border-radius: 10px;
+      padding: 6px 10px;
+      font-size: 12px;
+      color: #dce4ff;
+      z-index: 20;
+    }
     .nick-link {
       border: 0;
       background: transparent;
@@ -167,13 +179,41 @@
         <button class="difficulty-btn" id="btnLogout">Вийти</button>
         <button class="difficulty-btn" id="btnSurvival">Виживання</button>
         <button class="difficulty-btn" id="btnMultiplayer">Мультиплеєр</button>
-        <button class="difficulty-btn" id="btnRunnerEndless">Ранер: Безкінечний</button>
-        <button class="difficulty-btn" id="btnRunnerCreator">Ранер: Створити рівень</button>
-        <button class="difficulty-btn" id="btnMyLevels">Свої рівні</button>
-        <button class="difficulty-btn" id="btnOtherLevels">Рівні інших</button>
+        <button class="difficulty-btn" id="btnRunnerMenu">Ранер</button>
+        <button class="difficulty-btn" id="btnSettings">Налаштування</button>
+        <button class="difficulty-btn" id="btnVersions">Версії</button>
         <button class="difficulty-btn" id="btnProfile">Профіль</button>
         <button class="difficulty-btn" id="btnLeaderboards">Лідерборди</button>
       </div>
+    </div>
+  </div>
+  <div class="difficulty-modal" id="runnerMenuModal" style="display:none;">
+    <div class="difficulty-box">
+      <b>Runner меню</b>
+      <div class="difficulty-grid">
+        <button class="difficulty-btn" id="btnRunnerCreator">Ранер: Створити рівень</button>
+        <button class="difficulty-btn" id="btnRunnerEndless">Ранер: Безкінечний</button>
+        <button class="difficulty-btn" id="btnMyLevels">Свої рівні</button>
+        <button class="difficulty-btn" id="btnOtherLevels">Рівні інших</button>
+      </div>
+      <button class="difficulty-btn" id="runnerMenuCloseBtn" style="margin-top:8px;">Закрити</button>
+    </div>
+  </div>
+  <div class="difficulty-modal" id="settingsModal" style="display:none;">
+    <div class="difficulty-box">
+      <b>Налаштування</b>
+      <div style="margin-top:10px; background:#21295c; border-radius:10px; padding:10px;">
+        <b>Тестування</b><br/>
+        <label><input type="checkbox" id="enhancedTexturesToggle"/> Покращення текстур (реалістичніші)</label>
+      </div>
+      <button class="difficulty-btn" id="settingsCloseBtn" style="margin-top:8px;">Закрити</button>
+    </div>
+  </div>
+  <div class="difficulty-modal" id="versionsModal" style="display:none;">
+    <div class="difficulty-box">
+      <b>Версії гри</b>
+      <div id="versionsContent" style="margin-top:8px; max-height:420px; overflow:auto;"></div>
+      <button class="difficulty-btn" id="versionsCloseBtn" style="margin-top:8px;">Закрити</button>
     </div>
   </div>
   <div class="difficulty-modal" id="multiplayerModal" style="display:none;">
@@ -190,6 +230,7 @@
       <button class="difficulty-btn" id="mpCloseBtn" style="margin-top:8px;">Закрити</button>
     </div>
   </div>
+  <div class="version-badge" id="versionBadge"></div>
   <div class="difficulty-modal" id="profileModal" style="display:none;">
     <div class="difficulty-box" style="max-width:760px;">
       <div id="profileContent"></div>
@@ -273,9 +314,15 @@
     const difficultyModal = document.getElementById("difficultyModal");
     const mainMenu = document.getElementById("mainMenu");
     const levelBrowser = document.getElementById("levelBrowser");
+    const runnerMenuModal = document.getElementById("runnerMenuModal");
     const profileModal = document.getElementById("profileModal");
     const leaderboardModal = document.getElementById("leaderboardModal");
     const multiplayerModal = document.getElementById("multiplayerModal");
+    const settingsModal = document.getElementById("settingsModal");
+    const versionsModal = document.getElementById("versionsModal");
+    const versionsContent = document.getElementById("versionsContent");
+    const enhancedTexturesToggle = document.getElementById("enhancedTexturesToggle");
+    const versionBadge = document.getElementById("versionBadge");
     const mpJoinInfo = document.getElementById("mpJoinInfo");
     const mpJoinBtn = document.getElementById("mpJoinBtn");
     const inventorySlots = document.getElementById("inventorySlots");
@@ -394,6 +441,15 @@
       boots: { name: "Швидкісні Чоботи", color: "#f4d76d" },
       compass: { name: "Компас", color: "#ffd1ff" }
     };
+    const CURRENT_VERSION = "4.0";
+    const VERSION_HISTORY = [
+      { v: "4.0", notes: "Runner меню, Налаштування, Версії, покращення текстур, arena-only фікси." },
+      { v: "3.0", notes: "Інвентар, легендарні предмети, базовий мультиплеєр виживання." },
+      { v: "2.0", notes: "Профілі, адмін-рейтинг, зірки, Creator Points, лідерборди." },
+      { v: "1.0", notes: "Перший реліз MegaFuse: survival, runner, editor." }
+    ];
+    const GAME_SETTINGS_KEY = "megafuse_settings_v1";
+    let gameSettings = { enhancedTextures: false };
 
     const player = {
       x: 320,
@@ -534,6 +590,17 @@
       }
     }
     function itemName(type) { return ITEM_INFO[type]?.name || type; }
+    function loadSettings() {
+      gameSettings = { enhancedTextures: false, ...(JSON.parse(localStorage.getItem(GAME_SETTINGS_KEY) || "{}")) };
+      enhancedTexturesToggle.checked = !!gameSettings.enhancedTextures;
+      versionBadge.textContent = `Версія ${CURRENT_VERSION}`;
+    }
+    function saveSettings() {
+      localStorage.setItem(GAME_SETTINGS_KEY, JSON.stringify(gameSettings));
+    }
+    function getArenaScreenW() {
+      return state.arenaOnly ? view.w : (view.w - world.dashLaneWidth);
+    }
     function hasItem(type) {
       return state.inventory.some((s) => s && s.type === type && s.count > 0);
     }
@@ -672,8 +739,21 @@
     }
 
     function texturedRect(x, y, w, h, base, line, step = 8) {
-      ctx.fillStyle = base;
-      ctx.fillRect(x, y, w, h);
+      if (gameSettings.enhancedTextures) {
+        const g = ctx.createLinearGradient(x, y, x + w, y + h);
+        g.addColorStop(0, base);
+        g.addColorStop(1, "#0a0f24");
+        ctx.fillStyle = g;
+        ctx.fillRect(x, y, w, h);
+        ctx.shadowColor = "rgba(0,0,0,0.4)";
+        ctx.shadowBlur = 6;
+        ctx.strokeStyle = "rgba(255,255,255,0.08)";
+        ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+        ctx.shadowBlur = 0;
+      } else {
+        ctx.fillStyle = base;
+        ctx.fillRect(x, y, w, h);
+      }
       ctx.strokeStyle = line;
       ctx.lineWidth = 1;
       for (let i = 0; i < w + h; i += step) {
@@ -787,8 +867,13 @@
       state.pendingRestartTimer = 0;
       state.msg = "Виконуй завдання, виживай і викривай імпосторів.";
       const p = groundSpawnPosition(player.r);
-      player.x = p.x;
-      player.y = p.y;
+      if (state.arenaOnly) {
+        player.x = world.arenaW / 2;
+        player.y = world.arenaH / 2;
+      } else {
+        player.x = p.x;
+        player.y = p.y;
+      }
       player.fireCooldown = 0;
       player.dirX = 1;
       player.dirY = 0;
@@ -843,7 +928,8 @@
     }
 
     function updateCamera() {
-      camera.x = clamp(player.x - (view.w - world.dashLaneWidth) / 2, 0, world.arenaW - (view.w - world.dashLaneWidth));
+      const arenaW = getArenaScreenW();
+      camera.x = clamp(player.x - arenaW / 2, 0, world.arenaW - arenaW);
       camera.y = clamp(player.y - view.h / 2, 0, world.arenaH - view.h);
     }
 
@@ -1236,7 +1322,7 @@
     }
 
     function drawArena() {
-      const arenaScreenW = view.w - world.dashLaneWidth;
+      const arenaScreenW = getArenaScreenW();
 
       texturedRect(0, 0, arenaScreenW, view.h, "#183c1f", "rgba(0,0,0,0.07)", 18);
 
@@ -1426,7 +1512,7 @@
         }
       }
 
-      const camW = (view.w - world.dashLaneWidth) * sx;
+      const camW = getArenaScreenW() * sx;
       const camH = view.h * sy;
       ctx.strokeStyle = "#ffffff";
       ctx.strokeRect(x + camera.x * sx, y + camera.y * sy, camW, camH);
@@ -1537,6 +1623,7 @@
       runner.floorSpikesActive = false;
       runner.topPlatformActive = false;
       mainMenu.style.display = "none";
+      runnerMenuModal.style.display = "none";
       difficultyModal.style.display = "none";
       document.getElementById("backToEditorBtn").style.display = fromEditor ? "block" : "none";
       state.msg = levelMusic ? `Runner mode! Now playing: ${levelMusic}` : "Runner mode!";
@@ -1813,9 +1900,12 @@
         mainMenu.style.display = "grid";
         difficultyModal.style.display = "none";
         levelBrowser.style.display = "none";
+        runnerMenuModal.style.display = "none";
         profileModal.style.display = "none";
         leaderboardModal.style.display = "none";
         multiplayerModal.style.display = "none";
+        settingsModal.style.display = "none";
+        versionsModal.style.display = "none";
         editorTools.style.display = "none";
         updateControlsText();
         return;
@@ -1873,7 +1963,7 @@
         zombieDamage: Number(document.getElementById("c_zombie_dmg").value),
         spikeMin: Number(document.getElementById("c_spikes_every").value),
         spikeMax: Number(document.getElementById("c_spikes_every").value),
-        spikesEnabled: spikesOn,
+        spikesEnabled: spikesOn && !document.getElementById("c_arena_only").checked,
         crewCount: totalCrew,
         goodCrew: good,
         impostors: imp,
@@ -1983,6 +2073,7 @@
       editor.scrollX = 0;
       state.mode = "runner_editor";
       mainMenu.style.display = "none";
+      runnerMenuModal.style.display = "none";
       editorTools.style.display = "block";
       document.getElementById("backToEditorBtn").style.display = "none";
       updateControlsText();
@@ -2027,6 +2118,7 @@
       difficultyFilter.value = "all";
       renderLevelCards();
       mainMenu.style.display = "none";
+      runnerMenuModal.style.display = "none";
       levelBrowser.style.display = "grid";
     }
 
@@ -2202,6 +2294,15 @@
       profileModal.style.display = "none";
       leaderboardModal.style.display = "grid";
     }
+    function openSettings() {
+      mainMenu.style.display = "none";
+      settingsModal.style.display = "grid";
+    }
+    function openVersions() {
+      versionsContent.innerHTML = VERSION_HISTORY.map((x) => `<div style="background:#1f2758;border:1px solid #4f5bbc;border-radius:8px;padding:8px;margin:6px 0;"><b>v${x.v}</b><br/>${x.notes}</div>`).join("");
+      mainMenu.style.display = "none";
+      versionsModal.style.display = "grid";
+    }
     function openMultiplayerMenu() {
       const d = loadData();
       if (!d.currentUser) return alert("Спочатку залогінься");
@@ -2214,6 +2315,7 @@
         mpJoinBtn.style.display = "none";
       }
       mainMenu.style.display = "none";
+      runnerMenuModal.style.display = "none";
       multiplayerModal.style.display = "grid";
     }
     function startMultiplayerHost(diffKey, custom = false) {
@@ -2257,6 +2359,28 @@
     document.getElementById("btnOtherLevels").addEventListener("click", () => openLevelBrowser("other"));
     document.getElementById("btnProfile").addEventListener("click", () => openProfile());
     document.getElementById("btnLeaderboards").addEventListener("click", () => openLeaderboards());
+    document.getElementById("btnRunnerMenu").addEventListener("click", () => {
+      mainMenu.style.display = "none";
+      runnerMenuModal.style.display = "grid";
+    });
+    document.getElementById("runnerMenuCloseBtn").addEventListener("click", () => {
+      runnerMenuModal.style.display = "none";
+      mainMenu.style.display = "grid";
+    });
+    document.getElementById("btnSettings").addEventListener("click", () => openSettings());
+    document.getElementById("settingsCloseBtn").addEventListener("click", () => {
+      settingsModal.style.display = "none";
+      mainMenu.style.display = "grid";
+    });
+    enhancedTexturesToggle.addEventListener("change", () => {
+      gameSettings.enhancedTextures = enhancedTexturesToggle.checked;
+      saveSettings();
+    });
+    document.getElementById("btnVersions").addEventListener("click", () => openVersions());
+    document.getElementById("versionsCloseBtn").addEventListener("click", () => {
+      versionsModal.style.display = "none";
+      mainMenu.style.display = "grid";
+    });
     document.getElementById("btnMultiplayer").addEventListener("click", () => openMultiplayerMenu());
     document.getElementById("mpHostEasy").addEventListener("click", () => startMultiplayerHost("easy"));
     document.getElementById("mpHostNormal").addEventListener("click", () => startMultiplayerHost("normal"));
@@ -2384,9 +2508,11 @@
     }, { passive: false });
 
     state.msg = "Спочатку обери складність.";
+    loadSettings();
     updateHud();
     updateControlsText();
     refreshAuth();
     requestAnimationFrame(loop);
   </script>
 </body>
+</html>
