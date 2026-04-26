@@ -164,6 +164,22 @@
         <label><input id="c_spikes_on" type="checkbox" checked/> Спавнити спайки</label>
         <span id="spikeExtra">Кожні <input id="c_spikes_every" type="range" min="7" max="60" value="20"/> <span id="v_spikes_every">20</span> сек</span><br/>
         <label><input id="c_arena_only" type="checkbox"/> Лише Арена</label><br/>
+        <label><input id="c_reload_on" type="checkbox" checked/> Перезарядка</label>
+        <span id="reloadExtra">Після пострілів <input id="c_reload_shots" type="range" min="1" max="50" value="20"/> <span id="v_reload_shots">20</span>,
+          Тривалість <input id="c_reload_time" type="range" min="1" max="20" value="5"/> <span id="v_reload_time">5</span> с</span><br/>
+        <label><input id="c_items_on" type="checkbox" checked/> Предмети</label><br/>
+        <div id="itemsExtra" style="margin-left:8px;">
+          <label><input id="c_item_medkit_on" type="checkbox" checked/> Медичка</label>
+          <span id="medkitExtra">HP <input id="c_medkit_hp" type="range" min="5" max="150" value="50"/> <span id="v_medkit_hp">50</span>,
+          Кожні <input id="c_medkit_spawn" type="range" min="3" max="60" value="20"/> <span id="v_medkit_spawn">20</span> c</span><br/>
+          <label><input id="c_item_shield_on" type="checkbox" checked/> Щит</label>
+          <span id="shieldItemExtra">Кожні <input id="c_shield_spawn" type="range" min="3" max="60" value="20"/> <span id="v_shield_spawn">20</span> c</span><br/>
+          <label><input id="c_item_boots_on" type="checkbox" checked/> Швидкісні Чоботи</label>
+          <span id="bootsExtra">Швидкість <input id="c_boots_mult" type="range" min="11" max="20" value="15"/> <span id="v_boots_mult">1.5</span>x,
+          Кожні <input id="c_boots_spawn" type="range" min="3" max="60" value="20"/> <span id="v_boots_spawn">20</span> c</span><br/>
+          <label><input id="c_item_compass_on" type="checkbox" checked/> Компас</label>
+          <span id="compassExtra">Кожні <input id="c_compass_spawn" type="range" min="3" max="60" value="20"/> <span id="v_compass_spawn">20</span> c</span><br/>
+        </div>
         <label><input id="c_show_roles" type="checkbox"/> Зразу показувати роль амонгаса</label><br/>
         <button id="startCustomBtn" class="difficulty-btn" style="margin-top:8px;">Старт Кастомної</button>
       </div>
@@ -425,6 +441,17 @@
       showMap: false,
       floorItems: [],
       itemSpawnTimer: 20,
+      itemTimers: { medkit: 20, shield: 20, boots: 20, compass: 20 },
+      itemRules: {
+        enabled: true,
+        medkit: { enabled: true, hp: 50, every: 20 },
+        shield: { enabled: true, every: 20 },
+        boots: { enabled: true, mult: 1.5, every: 20 },
+        compass: { enabled: true, every: 20 }
+      },
+      reloadEnabled: true,
+      reloadShots: 20,
+      reloadTime: 5,
       inventory: [{ type: "pistol", count: 1 }, null, null, null, null],
       selectedSlot: 0,
       shieldTimer: 0,
@@ -443,13 +470,29 @@
     };
     const CURRENT_VERSION = "4.0";
     const VERSION_HISTORY = [
-      { v: "4.0", notes: "Runner меню, Налаштування, Версії, покращення текстур, arena-only фікси." },
-      { v: "3.0", notes: "Інвентар, легендарні предмети, базовий мультиплеєр виживання." },
-      { v: "2.0", notes: "Профілі, адмін-рейтинг, зірки, Creator Points, лідерборди." },
-      { v: "1.0", notes: "Перший реліз MegaFuse: survival, runner, editor." }
+      { v: "Бета 1.9", notes: "Підготовка до релізу: лобі мультиплеєра, оптимізація текстур, фікси StartPos/runner-бар’єрів, гнучкі кастомні налаштування перезарядки та предметів." },
+      { v: "Бета 1.8", notes: "Додано налаштування покращення текстур, екран версій/оновлень і загальні виправлення." },
+      { v: "Бета 1.7", notes: "Інвентар + нові предмети (медичка, щит, чоботи, компас) і мультиплеєр." },
+      { v: "Бета 1.6", notes: "Профілі гравців, зірки, Creator Points і лідерборди." },
+      { v: "Бета 1.5.2", notes: "Прибрано рожевий портал, додано StartPos, вибір музики, ID і важкості ранер-рівнів." },
+      { v: "Бета 1.5.1", notes: "Виправлення помилок нових предметів редактора." },
+      { v: "Бета 1.5", notes: "Нові блоки/портали/орб у редакторі та рух/перевертання предметів." },
+      { v: "Бета 1.4.4", notes: "Фікси редактора й endless, збільшено робочу зону редактора." },
+      { v: "Бета 1.4.3", notes: "Фікси редактора, зменшено час захисту, додано кінець рівня." },
+      { v: "Бета 1.4.2", notes: "Додаткові фікси редактора." },
+      { v: "Бета 1.4.1", notes: "Фікси редактора і безкінечного режиму." },
+      { v: "Бета 1.4", notes: "Додано редактор рівнів (блоки, спайки, орби), покращено меню рівнів і endless." },
+      { v: "Бета 1.3", notes: "Розширено кастомну складність, новий runner-режим, рівні інших, коментарі, лайки/дізлайки, реєстрація." },
+      { v: "Бета 1.2", notes: "Кулі не проходять через стіни, додано кастомну складність." },
+      { v: "Бета 1.1.1", notes: "Погіршено імпостерів." },
+      { v: "Бета 1.1", notes: "Оновлена карта, покращені хороші амонгаси, додано складності виживання." },
+      { v: "Бета 1.0.2", notes: "Пофіксено неактивні кнопки, додано перезарядку 5с після 20 пострілів." },
+      { v: "Бета 1.0.1", notes: "Видалено туторіал і змінено швидкість спавну спайків в авторанері." },
+      { v: "Бета 1.0", notes: "Перша версія гри." }
     ];
     const GAME_SETTINGS_KEY = "megafuse_settings_v1";
     let gameSettings = { enhancedTextures: false };
+    const textureCache = new Map();
 
     const player = {
       x: 320,
@@ -484,7 +527,10 @@
       currentLevelId: null,
       size: 40,
       jumpBuffer: 0,
-      coyote: 0
+      coyote: 0,
+      attempts: 0,
+      spawnAnchorX: 120,
+      startBaseX: 0
     };
     const editor = { name: "", tool: "block", objects: [] };
     editor.scrollX = 0;
@@ -636,7 +682,7 @@
       if (i === 0 || !state.inventory[i]) return;
       const s = state.inventory[i];
       if (s.type === "medkit") {
-        state.hp = Math.min((DIFFICULTIES[state.difficultyKey]?.hp || 200), state.hp + 50);
+        state.hp = Math.min((DIFFICULTIES[state.difficultyKey]?.hp || 200), state.hp + Number(state.itemRules.medkit.hp || 50));
       } else if (s.type === "shield") {
         state.shieldTimer = 20;
       } else if (s.type === "boots") {
@@ -664,7 +710,7 @@
     function loadMpRoom() { return JSON.parse(localStorage.getItem(MP_KEY) || "null"); }
     function saveMpRoom(v) { if (!v) localStorage.removeItem(MP_KEY); else localStorage.setItem(MP_KEY, JSON.stringify(v)); }
     function syncMultiplayerPresence() {
-      if (!state.multiplayer.roomId) return;
+      if (!state.multiplayer.roomId || state.multiplayer.waiting) return;
       const d = loadData();
       const user = d.currentUser;
       if (!user) return;
@@ -736,20 +782,33 @@
       state.goodTaskTime = d.goodTaskTime;
       state.impostorDamage = d.impostorDamage ?? 10;
       state.arenaOnly = !!d.arenaOnly;
+      state.reloadEnabled = d.reloadEnabled ?? true;
+      state.reloadShots = d.reloadShots ?? 20;
+      state.reloadTime = d.reloadTime ?? 5;
+      state.itemRules.enabled = d.itemsEnabled ?? true;
+      state.itemRules.medkit = d.itemRules?.medkit || { enabled: true, hp: 50, every: 20 };
+      state.itemRules.shield = d.itemRules?.shield || { enabled: true, every: 20 };
+      state.itemRules.boots = d.itemRules?.boots || { enabled: true, mult: 1.5, every: 20 };
+      state.itemRules.compass = d.itemRules?.compass || { enabled: true, every: 20 };
     }
 
     function texturedRect(x, y, w, h, base, line, step = 8) {
       if (gameSettings.enhancedTextures) {
-        const g = ctx.createLinearGradient(x, y, x + w, y + h);
-        g.addColorStop(0, base);
-        g.addColorStop(1, "#0a0f24");
-        ctx.fillStyle = g;
+        if (!textureCache.has(base)) {
+          const c = document.createElement("canvas");
+          c.width = 32; c.height = 32;
+          const cctx = c.getContext("2d");
+          const g = cctx.createLinearGradient(0, 0, 32, 32);
+          g.addColorStop(0, base);
+          g.addColorStop(1, "#0a0f24");
+          cctx.fillStyle = g;
+          cctx.fillRect(0, 0, 32, 32);
+          cctx.strokeStyle = "rgba(255,255,255,0.06)";
+          for (let i = 0; i < 32; i += 8) { cctx.beginPath(); cctx.moveTo(i, 0); cctx.lineTo(0, i); cctx.stroke(); }
+          textureCache.set(base, ctx.createPattern(c, "repeat"));
+        }
+        ctx.fillStyle = textureCache.get(base);
         ctx.fillRect(x, y, w, h);
-        ctx.shadowColor = "rgba(0,0,0,0.4)";
-        ctx.shadowBlur = 6;
-        ctx.strokeStyle = "rgba(255,255,255,0.08)";
-        ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
-        ctx.shadowBlur = 0;
       } else {
         ctx.fillStyle = base;
         ctx.fillRect(x, y, w, h);
@@ -853,6 +912,12 @@
       state.hp = DIFFICULTIES[state.difficultyKey || "normal"].hp;
       state.floorItems = [];
       state.itemSpawnTimer = 20;
+      state.itemTimers = {
+        medkit: state.itemRules.medkit.every,
+        shield: state.itemRules.shield.every,
+        boots: state.itemRules.boots.every,
+        compass: state.itemRules.compass.every
+      };
       state.inventory = [{ type: "pistol", count: 1 }, null, null, null, null];
       state.selectedSlot = 0;
       state.shieldTimer = 0;
@@ -867,17 +932,13 @@
       state.pendingRestartTimer = 0;
       state.msg = "Виконуй завдання, виживай і викривай імпосторів.";
       const p = groundSpawnPosition(player.r);
-      if (state.arenaOnly) {
-        player.x = world.arenaW / 2;
-        player.y = world.arenaH / 2;
-      } else {
-        player.x = p.x;
-        player.y = p.y;
-      }
+      player.x = p.x;
+      player.y = p.y;
       player.fireCooldown = 0;
       player.dirX = 1;
       player.dirY = 0;
       player.speed = 4;
+      player.maxAmmo = state.reloadShots;
       player.ammo = player.maxAmmo;
       player.reloading = false;
       player.reloadTimer = 0;
@@ -1221,6 +1282,18 @@
     }
 
     function update(dt) {
+      if (state.multiplayer.active && state.multiplayer.waiting) {
+        const room = loadMpRoom();
+        const count = room?.players ? Object.keys(room.players).length : 0;
+        state.msg = `Лобі мультиплеєра: очікування гравця... (${count}/2)`;
+        if (room?.started && count >= 2) {
+          resetWorld();
+          state.mode = "survival_multiplayer";
+          state.multiplayer.waiting = false;
+        }
+        updateHud();
+        return;
+      }
       if (state.mode === "menu") return;
       if (state.mode === "runner_editor") return;
       if (state.mode === "runner_endless" || state.mode === "runner_level_play") {
@@ -1234,14 +1307,21 @@
       state.sessionTime += dt;
       state.shieldTimer = Math.max(0, state.shieldTimer - dt);
       state.speedTimer = Math.max(0, state.speedTimer - dt);
-      player.speed = state.speedTimer > 0 ? 6 : 4;
-      state.itemSpawnTimer -= dt;
-      if (state.itemSpawnTimer <= 0) {
-        const keys = ["medkit", "shield", "boots", "compass"];
-        const type = keys[Math.floor(Math.random() * keys.length)];
-        const p = randomFreePosition(10);
-        state.floorItems.push({ type, x: p.x, y: p.y });
-        state.itemSpawnTimer = 20;
+      const bootsMult = Number(state.itemRules.boots.mult || 1.5);
+      player.speed = state.speedTimer > 0 ? (4 * bootsMult) : 4;
+      if (state.itemRules.enabled) {
+        const itemTypes = ["medkit","shield","boots","compass"];
+        for (const t of itemTypes) {
+          const rule = state.itemRules[t];
+          if (!rule?.enabled) continue;
+          if (t === "compass" && state.mode !== "survival_multiplayer") continue;
+          state.itemTimers[t] -= dt;
+          if (state.itemTimers[t] <= 0) {
+            const p = randomFreePosition(10);
+            state.floorItems.push({ type: t, x: p.x, y: p.y });
+            state.itemTimers[t] = Math.max(3, Number(rule.every || 20));
+          }
+        }
       }
       if (state.multiplayer.active) syncMultiplayerPresence();
       if (state.pendingRestart) {
@@ -1292,10 +1372,13 @@
         state.bullets.push({ x: player.x, y: player.y, vx: player.dirX * 8, vy: player.dirY * 8, life: 80 });
         player.fireCooldown = 12;
         player.ammo--;
-        if (player.ammo <= 0) {
+        if (state.reloadEnabled && player.ammo <= 0) {
           player.reloading = true;
-          player.reloadTimer = 5;
-          state.msg = "Немає набоїв: перезарядка 5 секунд.";
+          player.reloadTimer = state.reloadTime;
+          state.msg = `Немає набоїв: перезарядка ${state.reloadTime} секунд.`;
+        }
+        if (!state.reloadEnabled && player.ammo <= 0) {
+          player.ammo = state.reloadShots;
         }
       }
 
@@ -1597,6 +1680,7 @@
       state.mode = levelData ? "runner_level_play" : "runner_endless";
       const startPos = levelData?.find((o) => o.type === "start_pos");
       const startY = startPos ? (startPos.baseY ?? 420) : 420;
+      const startX = startPos ? (startPos.x ?? 120) : 120;
       runner.hp = 100;
       runner.score = 0;
       runner.invuln = 0;
@@ -1606,11 +1690,14 @@
       runner.onGround = true;
       runner.levelData = levelData;
       runner.startY = clamp(startY, 100, view.h - 90 - runner.size);
+      runner.startBaseX = startX;
+      runner.spawnAnchorX = 120;
       runner.fromEditor = fromEditor;
       runner.currentLevelId = levelId;
       runner.obstacles = [];
       if (levelData) {
-        for (const o of levelData) runner.obstacles.push({ ...o, x: o.x + view.w });
+        const shift = runner.spawnAnchorX - runner.startBaseX;
+        for (const o of levelData) runner.obstacles.push({ ...o, x: o.x + shift + view.w });
       }
       runner.spawnTimer = 1.2;
       runner.respawnTimer = 0;
@@ -1622,6 +1709,7 @@
       runner.form = "cube";
       runner.floorSpikesActive = false;
       runner.topPlatformActive = false;
+      runner.attempts = 1;
       mainMenu.style.display = "none";
       runnerMenuModal.style.display = "none";
       difficultyModal.style.display = "none";
@@ -1634,7 +1722,7 @@
       if (runner.respawnTimer > 0) {
         runner.respawnTimer -= dt;
         if (runner.respawnTimer <= 0) {
-          runner.y = view.h - 90 - runner.size;
+          runner.y = runner.startY ?? (view.h - 90 - runner.size);
           runner.vy = 0;
           runner.form = "cube";
           runner.gravity = 1;
@@ -1652,7 +1740,7 @@
       runner.vy += grav;
       runner.y += runner.vy;
       let floor = view.h - 90 - runner.size;
-      let ceiling = 90;
+      let ceiling = -99999;
       for (const o of runner.obstacles) {
         if (o.type !== "block") continue;
         const oy = (o.baseY ?? (view.h - 90 - o.h));
@@ -1735,10 +1823,12 @@
                 runner.respawnTimer = 1;
                 runner.y = -100;
                 if (runner.levelData) {
-                  runner.obstacles = runner.levelData.map((o) => ({ ...o, x: o.x + view.w }));
+                  const shift = runner.spawnAnchorX - runner.startBaseX;
+                  runner.obstacles = runner.levelData.map((o) => ({ ...o, x: o.x + shift + view.w }));
                   runner.endWall = null;
                   runner.emptyTimer = 0;
                 }
+                runner.attempts++;
               }
             }
           }
@@ -1750,10 +1840,8 @@
         activeOrb.dead = true;
         runner.score += 5;
       }
-      if (runner.y < 40) {
-        runner.hp -= 20;
-        runner.respawnTimer = state.mode === "runner_endless" ? 0.2 : 1;
-        runner.y = -100;
+      if (runner.y < 50) {
+        runner.hp = 0;
       }
       runner.obstacles = runner.obstacles.filter((o) => !o.dead && o.x > -80);
       if (state.mode === "runner_level_play") {
@@ -1774,17 +1862,20 @@
           }
         }
       }
-      ui.message.textContent = runner.invuln > 0 ? `Захист ${runner.invuln.toFixed(1)}с` : "Runner";
+      const attemptsText = state.mode === "runner_level_play" ? ` | Спроби: ${runner.attempts}` : "";
+      ui.message.textContent = (runner.invuln > 0 ? `Захист ${runner.invuln.toFixed(1)}с` : "Runner") + attemptsText;
       if (runner.hp <= 0) {
         runner.hp = 100;
         runner.respawnTimer = 0.8;
         if (runner.levelData) {
-          runner.obstacles = runner.levelData.map((o) => ({ ...o, x: o.x + view.w }));
+          const shift = runner.spawnAnchorX - runner.startBaseX;
+          runner.obstacles = runner.levelData.map((o) => ({ ...o, x: o.x + shift + view.w }));
           runner.endWall = null;
           runner.emptyTimer = 0;
         } else {
           runner.obstacles = [];
         }
+        runner.attempts++;
       }
     }
 
@@ -1827,18 +1918,6 @@
           ctx.fillStyle = "#4aa3ff"; ctx.fillRect(o.x + 6, y + 4, 28, 112);
         } else if (o.type === "cube_portal") {
           ctx.fillStyle = "#6dff72"; ctx.fillRect(o.x + 6, y + 4, 28, 112);
-        } else if (o.type === "start_pos") {
-          ctx.fillStyle = "#8bffdc";
-          ctx.fillRect(o.x + 4, y + 4, 32, 32);
-          ctx.fillStyle = "#0c4";
-          ctx.fillRect(o.x + 18, y - 20, 4, 24);
-          ctx.fillStyle = "#0f8";
-          ctx.beginPath();
-          ctx.moveTo(o.x + 22, y - 20);
-          ctx.lineTo(o.x + 36, y - 14);
-          ctx.lineTo(o.x + 22, y - 8);
-          ctx.closePath();
-          ctx.fill();
         } else if (o.type === "gravity_orb") {
           ctx.fillStyle = "#6aa5ff"; ctx.beginPath(); ctx.arc(o.x + 20, y + 20, 14, 0, Math.PI * 2); ctx.fill();
         } else {
@@ -1938,13 +2017,16 @@
     });
 
     const customPanel = document.getElementById("customPanel");
-    const customIds = ["hp","tasks","map","zombie_init","zombie_spawn","zombie_dmg","archer_init","archer_dmg","good","good_time","imp","imp_dmg","spikes_every"];
+    const customIds = ["hp","tasks","map","zombie_init","zombie_spawn","zombie_dmg","archer_init","archer_dmg","good","good_time","imp","imp_dmg","spikes_every","reload_shots","reload_time","medkit_hp","medkit_spawn","shield_spawn","boots_mult","boots_spawn","compass_spawn"];
     customIds.forEach((id) => {
       const input = document.getElementById(`c_${id}`);
       const out = document.getElementById(`v_${id}`);
       if (input && out) {
         out.textContent = input.value;
-        input.addEventListener("input", () => { out.textContent = input.value; });
+        input.addEventListener("input", () => {
+          if (id === "boots_mult") out.textContent = (Number(input.value) / 10).toFixed(1);
+          else out.textContent = input.value;
+        });
       }
     });
 
@@ -1976,7 +2058,17 @@
         initialArchers: Number(document.getElementById("c_archer_init").value),
         goodTaskTime: Number(document.getElementById("c_good_time").value),
         arenaOnly: document.getElementById("c_arena_only").checked,
-        enemyDamage: Number(document.getElementById("c_archer_dmg").value)
+        enemyDamage: Number(document.getElementById("c_archer_dmg").value),
+        reloadEnabled: document.getElementById("c_reload_on").checked,
+        reloadShots: Number(document.getElementById("c_reload_shots").value),
+        reloadTime: Number(document.getElementById("c_reload_time").value),
+        itemsEnabled: document.getElementById("c_items_on").checked,
+        itemRules: {
+          medkit: { enabled: document.getElementById("c_item_medkit_on").checked, hp: Number(document.getElementById("c_medkit_hp").value), every: Number(document.getElementById("c_medkit_spawn").value) },
+          shield: { enabled: document.getElementById("c_item_shield_on").checked, every: Number(document.getElementById("c_shield_spawn").value) },
+          boots: { enabled: document.getElementById("c_item_boots_on").checked, mult: Number(document.getElementById("c_boots_mult").value) / 10, every: Number(document.getElementById("c_boots_spawn").value) },
+          compass: { enabled: document.getElementById("c_item_compass_on").checked, every: Number(document.getElementById("c_compass_spawn").value) }
+        }
       };
     }
 
@@ -1984,8 +2076,14 @@
       document.getElementById("zombieExtra").style.display = document.getElementById("c_zombie_on").checked ? "inline" : "none";
       document.getElementById("archerExtra").style.display = document.getElementById("c_archer_on").checked ? "inline" : "none";
       document.getElementById("spikeExtra").style.display = document.getElementById("c_spikes_on").checked ? "inline" : "none";
+      document.getElementById("reloadExtra").style.display = document.getElementById("c_reload_on").checked ? "inline" : "none";
+      document.getElementById("itemsExtra").style.display = document.getElementById("c_items_on").checked ? "block" : "none";
+      document.getElementById("medkitExtra").style.display = document.getElementById("c_item_medkit_on").checked ? "inline" : "none";
+      document.getElementById("shieldItemExtra").style.display = document.getElementById("c_item_shield_on").checked ? "inline" : "none";
+      document.getElementById("bootsExtra").style.display = document.getElementById("c_item_boots_on").checked ? "inline" : "none";
+      document.getElementById("compassExtra").style.display = document.getElementById("c_item_compass_on").checked ? "inline" : "none";
     }
-    ["c_zombie_on","c_archer_on","c_spikes_on"].forEach((id) => document.getElementById(id).addEventListener("change", toggleCustomSections));
+    ["c_zombie_on","c_archer_on","c_spikes_on","c_reload_on","c_items_on","c_item_medkit_on","c_item_shield_on","c_item_boots_on","c_item_compass_on"].forEach((id) => document.getElementById(id).addEventListener("change", toggleCustomSections));
     toggleCustomSections();
 
     const STORAGE_KEY = "megafuse_data_v1";
@@ -1996,7 +2094,7 @@
       let maxId = 0;
       for (const lv of d.levels || []) maxId = Math.max(maxId, Number(lv.displayId || 0));
       for (const lv of d.levels || []) {
-        if (!lv.displayId) { lv.displayId = ++maxId; changed = true; }
+        if (lv.published && !lv.displayId) { lv.displayId = ++maxId; changed = true; }
         if (!lv.music) { lv.music = "Stereo Madness"; changed = true; }
         if (!("publishDate" in lv)) { lv.publishDate = lv.published ? Date.now() : null; changed = true; }
         if (!lv.difficultyVotes) { lv.difficultyVotes = { easy: 0, normal: 0, hard: 0, insane: 0 }; changed = true; }
@@ -2095,7 +2193,7 @@
         const card = document.createElement("div");
         card.style.cssText = "background:#8f542f;color:#fff;border:2px solid #6adf3f;border-radius:10px;padding:8px;margin:6px 0;cursor:pointer;";
         const done = (lv.completedBy || []).includes(current) ? "✅" : "";
-        const idText = `#${lv.displayId || "?"}`;
+        const idText = lv.published && lv.displayId ? `#${lv.displayId}` : "Без ID";
         const pubDate = lv.publishDate ? formatDate(lv.publishDate) : "не опубліковано";
         const diff = avgDifficulty(lv.difficultyVotes);
         const badge = isAdmin(lv.author) ? " 👑" : "";
@@ -2139,7 +2237,7 @@
       const pubDate = lv.publishDate ? formatDate(lv.publishDate) : "не опубліковано";
       const diff = avgDifficulty(lv.difficultyVotes);
       const comments = (lv.comments || []).map((c, i) => `${i + 1}) <button class="nick-link" data-user="${c.user}">${c.user}${isAdmin(c.user) ? " 👑" : ""}</button>: ${c.text} 👍${c.likes || 0} 👎${c.dislikes || 0}`).join("<br/>") || "Нема коментарів";
-      levelDetail.innerHTML = `<b>#${lv.displayId || "?"} ${lv.name}</b> by <button class="nick-link" data-user="${lv.author}">${lv.author}${isAdmin(lv.author) ? " 👑" : ""}</button><br/>📅 ${pubDate} • 🎵 ${lv.music || "Stereo Madness"}<br/>🎚 ${diff}${lv.adminRating ? ` • Admin rated: ${difficultyLabel(lv.adminRating)} (⭐${levelStarReward(lv)})` : ""}<br/>👁 ${lv.views || 0} 👍 ${lv.likes || 0} 👎 ${lv.dislikes || 0}<br/><div style="max-height:120px;overflow:auto;margin-top:6px;">${comments}</div>`;
+      levelDetail.innerHTML = `<b>${lv.published && lv.displayId ? "#" + lv.displayId : "Без ID"} ${lv.name}</b> by <button class="nick-link" data-user="${lv.author}">${lv.author}${isAdmin(lv.author) ? " 👑" : ""}</button><br/>📅 ${pubDate} • 🎵 ${lv.music || "Stereo Madness"}<br/>🎚 ${diff}${lv.adminRating ? ` • Admin rated: ${difficultyLabel(lv.adminRating)} (⭐${levelStarReward(lv)})` : ""}<br/>👁 ${lv.views || 0} 👍 ${lv.likes || 0} 👎 ${lv.dislikes || 0}<br/><div style="max-height:120px;overflow:auto;margin-top:6px;">${comments}</div>`;
       const actions = document.createElement("div");
       actions.style.marginTop = "8px";
       actions.innerHTML = `<button class="difficulty-btn" id="playLvBtn">Play</button>
@@ -2222,6 +2320,7 @@
       const pubBtn = document.getElementById("publishLvBtn");
       if (pubBtn) pubBtn.onclick = () => {
         lv.published = true;
+        if (!lv.displayId) lv.displayId = d.levels.reduce((m, l) => Math.max(m, Number(l.displayId || 0)), 0) + 1;
         if (!lv.publishDate) lv.publishDate = Date.now();
         saveData(d);
         browserState.source = d.levels.filter((x) => browserState.type === "mine" ? x.author === (d.currentUser || "guest") : x.published);
@@ -2299,7 +2398,7 @@
       settingsModal.style.display = "grid";
     }
     function openVersions() {
-      versionsContent.innerHTML = VERSION_HISTORY.map((x) => `<div style="background:#1f2758;border:1px solid #4f5bbc;border-radius:8px;padding:8px;margin:6px 0;"><b>v${x.v}</b><br/>${x.notes}</div>`).join("");
+      versionsContent.innerHTML = VERSION_HISTORY.map((x) => `<div style="background:#1f2758;border:1px solid #4f5bbc;border-radius:8px;padding:8px;margin:6px 0;"><b>${x.v}</b><br/>${x.notes}</div>`).join("");
       mainMenu.style.display = "none";
       versionsModal.style.display = "grid";
     }
@@ -2323,17 +2422,19 @@
       if (!d.currentUser) return;
       if (custom) buildCustomDifficulty();
       applyDifficulty(diffKey);
-      resetWorld();
-      state.mode = "survival_multiplayer";
-      state.multiplayer = { active: true, roomId: `room_${Date.now()}`, isHost: true, other: null };
+      state.mode = "menu";
+      state.multiplayer = { active: true, roomId: `room_${Date.now()}`, isHost: true, other: null, waiting: true };
       saveMpRoom({
         id: state.multiplayer.roomId,
         host: d.currentUser,
         difficultyKey: diffKey,
         customConfig: custom ? DIFFICULTIES.custom : null,
-        players: { [d.currentUser]: { x: player.x, y: player.y, t: Date.now() } }
+        players: { [d.currentUser]: { x: 0, y: 0, t: Date.now() } },
+        started: false
       });
       multiplayerModal.style.display = "none";
+      mainMenu.style.display = "none";
+      state.msg = "Лобі мультиплеєра: очікування гравця...";
       updateControlsText();
     }
     function joinMultiplayerGame() {
@@ -2342,12 +2443,13 @@
       if (!d.currentUser || !room) return;
       if (room.customConfig) DIFFICULTIES.custom = room.customConfig;
       applyDifficulty(room.difficultyKey || "normal");
+      state.multiplayer = { active: true, roomId: room.id, isHost: false, other: null, waiting: false };
+      room.players = room.players || {};
+      room.players[d.currentUser] = { x: 0, y: 0, t: Date.now() };
+      room.started = true;
+      saveMpRoom(room);
       resetWorld();
       state.mode = "survival_multiplayer";
-      state.multiplayer = { active: true, roomId: room.id, isHost: false, other: null };
-      room.players = room.players || {};
-      room.players[d.currentUser] = { x: player.x, y: player.y, t: Date.now() };
-      saveMpRoom(room);
       multiplayerModal.style.display = "none";
       updateControlsText();
     }
@@ -2435,10 +2537,9 @@
     document.getElementById("saveLevelBtn").onclick = () => {
       const d = loadData();
       if (!d.currentUser) return alert("Потрібен логін");
-      const nextDisplayId = d.levels.reduce((m, l) => Math.max(m, Number(l.displayId || 0)), 0) + 1;
       d.levels.push({
         id: Date.now(),
-        displayId: nextDisplayId,
+        displayId: null,
         name: editor.name || "My Level",
         author: d.currentUser,
         music: document.getElementById("editorMusic").value || "Stereo Madness",
