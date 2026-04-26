@@ -2153,6 +2153,9 @@
         const key = String(lv.id);
         if (!byId.has(key)) { out.levels.push(lv); byId.set(key, lv); continue; }
       }
+      for (const lv of out.levels) {
+        if (lv.author && !out.accounts[lv.author]) out.accounts[lv.author] = "";
+      }
       return out;
     }
     async function pushDataToServer(data) {
@@ -2170,6 +2173,7 @@
         const merged = mergeRemoteData(loadData(), remote);
         localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
         refreshAuth();
+        if (levelBrowser.style.display === "grid") renderLevelCards();
       } catch {}
     }
     function buildSyncPackage() {
@@ -2283,7 +2287,8 @@
       if (!filtered.length) levelCards.innerHTML = "<div style='color:#bfc8ff;'>Нічого не знайдено.</div>";
     }
 
-    function openLevelBrowser(type) {
+    async function openLevelBrowser(type) {
+      await pullDataFromServer();
       const d = loadData();
       const current = d.currentUser || "guest";
       const list = type === "mine" ? d.levels.filter((l) => l.author === current) : d.levels.filter((l) => l.published);
@@ -2420,7 +2425,8 @@
         updateControlsText();
       };
     }
-    function openProfile(userName = null) {
+    async function openProfile(userName = null) {
+      await pullDataFromServer();
       const d = loadData();
       const who = userName || d.currentUser;
       if (!who) return alert("Спочатку залогінься");
@@ -2434,7 +2440,12 @@
     }
     function renderLeaderboard(kind) {
       const d = loadData();
-      const rows = Object.keys(d.accounts || {}).map((u) => ({ user: u, p: ensureProfile(d, u) }));
+      const users = new Set([
+        ...Object.keys(d.accounts || {}),
+        ...Object.keys(d.profiles || {}),
+        ...(d.levels || []).map((l) => l.author).filter(Boolean)
+      ]);
+      const rows = [...users].map((u) => ({ user: u, p: ensureProfile(d, u) }));
       const by = {
         points: (a, b) => (b.p.points || 0) - (a.p.points || 0),
         stars: (a, b) => (b.p.stars || 0) - (a.p.stars || 0),
@@ -2454,7 +2465,8 @@
         </div>`;
       }).join("") || "<div>Ще немає даних</div>";
     }
-    function openLeaderboards() {
+    async function openLeaderboards() {
+      await pullDataFromServer();
       const tabs = [
         ["points","Очки"],["stars","Зірки"],["creator","Creator Points"],
         ["easy","Easy Mode"],["normal","Normal Mode"],["hard","Hard Mode"]
