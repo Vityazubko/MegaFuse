@@ -2103,6 +2103,8 @@
     toggleCustomSections();
 
     const STORAGE_KEY = "megafuse_data_v1";
+    const SERVER_SYNC_URL = `${location.origin}/api/shared`;
+    const SERVER_SYNC_ENABLED = location.protocol.startsWith("http");
     function loadData() {
       const d = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{\"accounts\":{},\"currentUser\":\"\",\"levels\":[],\"profiles\":{}}");
       let changed = false;
@@ -2123,7 +2125,53 @@
       if (changed) saveData(d);
       return d;
     }
-    function saveData(data) { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); }
+    function saveData(data) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      pushDataToServer(data);
+    }
+    function mergeRemoteData(local, remote) {
+      const out = JSON.parse(JSON.stringify(local));
+      out.accounts = out.accounts || {};
+      out.profiles = out.profiles || {};
+      out.levels = out.levels || [];
+      for (const [u, p] of Object.entries(remote.accounts || {})) if (!out.accounts[u]) out.accounts[u] = p;
+      for (const [u, p] of Object.entries(remote.profiles || {})) {
+        const prev = out.profiles[u] || { points: 0, stars: 0, creatorPoints: 0, bestTimes: { easy: null, normal: null, hard: null } };
+        out.profiles[u] = {
+          points: Math.max(prev.points || 0, p.points || 0),
+          stars: Math.max(prev.stars || 0, p.stars || 0),
+          creatorPoints: Math.max(prev.creatorPoints || 0, p.creatorPoints || 0),
+          bestTimes: {
+            easy: (prev.bestTimes?.easy == null) ? p.bestTimes?.easy ?? null : (p.bestTimes?.easy == null ? prev.bestTimes.easy : Math.min(prev.bestTimes.easy, p.bestTimes.easy)),
+            normal: (prev.bestTimes?.normal == null) ? p.bestTimes?.normal ?? null : (p.bestTimes?.normal == null ? prev.bestTimes.normal : Math.min(prev.bestTimes.normal, p.bestTimes.normal)),
+            hard: (prev.bestTimes?.hard == null) ? p.bestTimes?.hard ?? null : (p.bestTimes?.hard == null ? prev.bestTimes.hard : Math.min(prev.bestTimes.hard, p.bestTimes.hard))
+          }
+        };
+      }
+      const byId = new Map(out.levels.map((l) => [String(l.id), l]));
+      for (const lv of remote.levels || []) {
+        const key = String(lv.id);
+        if (!byId.has(key)) { out.levels.push(lv); byId.set(key, lv); continue; }
+      }
+      return out;
+    }
+    async function pushDataToServer(data) {
+      if (!SERVER_SYNC_ENABLED) return;
+      try {
+        await fetch(SERVER_SYNC_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ data }) });
+      } catch {}
+    }
+    async function pullDataFromServer() {
+      if (!SERVER_SYNC_ENABLED) return;
+      try {
+        const res = await fetch(SERVER_SYNC_URL);
+        if (!res.ok) return;
+        const remote = await res.json();
+        const merged = mergeRemoteData(loadData(), remote);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
+        refreshAuth();
+      } catch {}
+    }
     function buildSyncPackage() {
       const d = loadData();
       return {
@@ -2665,6 +2713,8 @@
     updateHud();
     updateControlsText();
     refreshAuth();
+    pullDataFromServer();
+    setInterval(pullDataFromServer, 15000);
     requestAnimationFrame(loop);
   </script>
 </body>
