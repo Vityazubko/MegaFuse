@@ -198,6 +198,7 @@
         <button class="difficulty-btn" id="btnRunnerMenu">Ранер</button>
         <button class="difficulty-btn" id="btnSettings">Налаштування</button>
         <button class="difficulty-btn" id="btnVersions">Версії</button>
+        <button class="difficulty-btn" id="btnSync">Синхронізація</button>
         <button class="difficulty-btn" id="btnProfile">Профіль</button>
         <button class="difficulty-btn" id="btnLeaderboards">Лідерборди</button>
       </div>
@@ -230,6 +231,18 @@
       <b>Версії гри</b>
       <div id="versionsContent" style="margin-top:8px; max-height:420px; overflow:auto;"></div>
       <button class="difficulty-btn" id="versionsCloseBtn" style="margin-top:8px;">Закрити</button>
+    </div>
+  </div>
+  <div class="difficulty-modal" id="syncModal" style="display:none;">
+    <div class="difficulty-box">
+      <b>Синхронізація між комп'ютерами</b>
+      <div style="font-size:12px;color:#bfc8ff;margin-top:6px;">Без серверу автоматична синхронізація неможлива. Використай експорт/імпорт пакету.</div>
+      <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="difficulty-btn" id="btnExportSync">Експортувати пакет</button>
+        <button class="difficulty-btn" id="btnImportSync">Імпортувати пакет</button>
+      </div>
+      <textarea id="syncPayload" style="width:100%;height:180px;margin-top:8px;background:#10163a;color:#eef2ff;border:1px solid #4f5bbc;border-radius:8px;padding:8px;"></textarea>
+      <button class="difficulty-btn" id="syncCloseBtn" style="margin-top:8px;">Закрити</button>
     </div>
   </div>
   <div class="difficulty-modal" id="multiplayerModal" style="display:none;">
@@ -336,9 +349,11 @@
     const multiplayerModal = document.getElementById("multiplayerModal");
     const settingsModal = document.getElementById("settingsModal");
     const versionsModal = document.getElementById("versionsModal");
+    const syncModal = document.getElementById("syncModal");
     const versionsContent = document.getElementById("versionsContent");
     const enhancedTexturesToggle = document.getElementById("enhancedTexturesToggle");
     const versionBadge = document.getElementById("versionBadge");
+    const syncPayload = document.getElementById("syncPayload");
     const mpJoinInfo = document.getElementById("mpJoinInfo");
     const mpJoinBtn = document.getElementById("mpJoinBtn");
     const inventorySlots = document.getElementById("inventorySlots");
@@ -1985,6 +2000,7 @@
         multiplayerModal.style.display = "none";
         settingsModal.style.display = "none";
         versionsModal.style.display = "none";
+        syncModal.style.display = "none";
         editorTools.style.display = "none";
         updateControlsText();
         return;
@@ -2108,6 +2124,21 @@
       return d;
     }
     function saveData(data) { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); }
+    function buildSyncPackage() {
+      const d = loadData();
+      return {
+        v: CURRENT_VERSION,
+        exportedAt: new Date().toISOString(),
+        data: d,
+        mpRoom: loadMpRoom()
+      };
+    }
+    function applySyncPackage(pkg) {
+      if (!pkg?.data) throw new Error("invalid package");
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(pkg.data));
+      if (pkg.mpRoom) saveMpRoom(pkg.mpRoom);
+      refreshAuth();
+    }
     function refreshAuth() {
       const d = loadData();
       authState.innerHTML = d.currentUser
@@ -2410,7 +2441,7 @@
         mpJoinInfo.textContent = `Є активна гра від ${room.host}. Можна приєднатися.`;
         mpJoinBtn.style.display = "inline-block";
       } else {
-        mpJoinInfo.textContent = room ? "Ти вже хост цієї гри." : "Активних ігор поки немає.";
+        mpJoinInfo.textContent = room ? "Ти вже хост цієї гри." : "Активних ігор поки немає. (Працює між вкладками одного браузера)";
         mpJoinBtn.style.display = "none";
       }
       mainMenu.style.display = "none";
@@ -2481,6 +2512,27 @@
     document.getElementById("btnVersions").addEventListener("click", () => openVersions());
     document.getElementById("versionsCloseBtn").addEventListener("click", () => {
       versionsModal.style.display = "none";
+      mainMenu.style.display = "grid";
+    });
+    document.getElementById("btnSync").addEventListener("click", () => {
+      syncPayload.value = "";
+      mainMenu.style.display = "none";
+      syncModal.style.display = "grid";
+    });
+    document.getElementById("btnExportSync").addEventListener("click", () => {
+      syncPayload.value = JSON.stringify(buildSyncPackage());
+      navigator.clipboard?.writeText(syncPayload.value).catch(() => {});
+      alert("Пакет експортовано. Скопійований у буфер (якщо доступно).");
+    });
+    document.getElementById("btnImportSync").addEventListener("click", () => {
+      try {
+        const pkg = JSON.parse(syncPayload.value || "{}");
+        applySyncPackage(pkg);
+        alert("Імпорт виконано. Онови список рівнів/профілів.");
+      } catch (e) { alert("Невірний пакет синхронізації."); }
+    });
+    document.getElementById("syncCloseBtn").addEventListener("click", () => {
+      syncModal.style.display = "none";
       mainMenu.style.display = "grid";
     });
     document.getElementById("btnMultiplayer").addEventListener("click", () => openMultiplayerMenu());
