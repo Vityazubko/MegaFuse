@@ -2103,8 +2103,14 @@
     toggleCustomSections();
 
     const STORAGE_KEY = "megafuse_data_v1";
-    const SERVER_SYNC_URL = `${location.origin}/api/shared`;
-    const SERVER_SYNC_ENABLED = location.protocol.startsWith("http");
+    // API slot: choose backend provider for sync (server or Firebase-ready endpoint).
+    // To connect Firebase later, set provider to "firebase_rest" and fill firebaseRestUrl/apiKey.
+    const API_CONFIG = {
+      provider: "local_server", // "local_server" | "firebase_rest"
+      localServerUrl: `${location.origin}/api/shared`,
+      firebaseRestUrl: "", // e.g. https://<project-id>-default-rtdb.firebaseio.com/megafuse/shared.json
+      firebaseApiKey: ""   // optional for REST rules that require key
+    };
     function loadData() {
       const d = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{\"accounts\":{},\"currentUser\":\"\",\"levels\":[],\"profiles\":{}}");
       let changed = false;
@@ -2158,16 +2164,29 @@
       }
       return out;
     }
+    function getSyncUrls() {
+      if (API_CONFIG.provider === "firebase_rest" && API_CONFIG.firebaseRestUrl) {
+        const keyPart = API_CONFIG.firebaseApiKey ? `${API_CONFIG.firebaseRestUrl.includes("?") ? "&" : "?"}auth=${encodeURIComponent(API_CONFIG.firebaseApiKey)}` : "";
+        return { pushUrl: `${API_CONFIG.firebaseRestUrl}${keyPart}`, pullUrl: `${API_CONFIG.firebaseRestUrl}${keyPart}`, isFirebase: true };
+      }
+      return { pushUrl: API_CONFIG.localServerUrl, pullUrl: API_CONFIG.localServerUrl, isFirebase: false };
+    }
     async function pushDataToServer(data) {
-      if (!SERVER_SYNC_ENABLED) return;
       try {
-        await fetch(SERVER_SYNC_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ data }) });
+        const { pushUrl, isFirebase } = getSyncUrls();
+        if (!pushUrl || !location.protocol.startsWith("http")) return;
+        if (isFirebase) {
+          await fetch(pushUrl, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
+        } else {
+          await fetch(pushUrl, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ data }) });
+        }
       } catch {}
     }
     async function pullDataFromServer() {
-      if (!SERVER_SYNC_ENABLED) return;
       try {
-        const res = await fetch(SERVER_SYNC_URL);
+        const { pullUrl, isFirebase } = getSyncUrls();
+        if (!pullUrl || !location.protocol.startsWith("http")) return;
+        const res = await fetch(pullUrl);
         if (!res.ok) return;
         const remote = await res.json();
         const merged = mergeRemoteData(loadData(), remote);
